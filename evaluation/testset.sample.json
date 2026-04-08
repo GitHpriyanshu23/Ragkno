@@ -1,0 +1,10 @@
+[
+  {
+    "question": "What optimization work did Barkha Navalani do?",
+    "ground_truth": "She worked on real-world projects involving model training and performance optimization."
+  },
+  {
+    "question": "What is this project used for?",
+    "ground_truth": "It is a retrieval-augmented generation app that ingests documents and answers questions from indexed content."
+  }
+]

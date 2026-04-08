@@ -1,0 +1,270 @@
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  width: 100%;
+  min-height: 100%;
+}
+
+:root {
+  --bg: #f5f5f5;
+  --bg-soft: #ededed;
+  --text: #111111;
+  --muted: #676767;
+  --border: #dbdbdb;
+  --border-dark: #c9c9c9;
+  --black: #000000;
+  --white: #ffffff;
+}
+
+body {
+  font-family: 'Inter', sans-serif;
+  color: var(--text);
+  background:
+    radial-gradient(circle at 15% -10%, #efefef, transparent 35%),
+    radial-gradient(circle at 100% 0, #ececec, transparent 38%),
+    linear-gradient(180deg, #f9f9f9 0%, #f2f2f2 100%);
+  background-attachment: fixed;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.app-shell {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.chat-main {
+  flex: 1;
+}
+
+.top-nav {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  border-bottom: 1px solid #e8e8e8;
+  backdrop-filter: blur(14px);
+  background: rgba(255, 255, 255, 0.8);
+}
+
+.top-nav-inner {
+  max-width: 1220px;
+  margin: 0 auto;
+  padding: 0 24px;
+  height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.brand {
+  font-family: 'Archivo', sans-serif;
+  font-size: 1.25rem;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+}
+
+.top-links {
+  display: flex;
+  align-items: center;
+  gap: 28px;
+}
+
+.top-link {
+  font-size: 0.84rem;
+  color: #686868;
+  padding-bottom: 6px;
+  border-bottom: 2px solid transparent;
+  transition: color 0.2s ease, border-color 0.2s ease;
+}
+
+.top-link:hover {
+  color: #111;
+}
+
+.top-link.active {
+  color: #111;
+  border-bottom-color: #111;
+}
+
+.icon-btn {
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  color: #111;
+  cursor: pointer;
+}
+
+.btn-primary-solid,
+.btn-outline,
+.btn-link {
+  font-size: 0.72rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  font-weight: 700;
+  border: 1px solid transparent;
+  padding: 13px 18px;
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.btn-primary-solid {
+  background: var(--black);
+  color: var(--white);
+}
+
+.btn-primary-solid:hover {
+  opacity: 0.9;
+}
+
+.btn-outline {
+  border-color: #111;
+  color: #111;
+  background: transparent;
+}
+
+.btn-outline:hover {
+  background: #111;
+  color: #fff;
+}
+
+.btn-link {
+  color: #111;
+  border-bottom-color: #111;
+  padding-left: 0;
+  padding-right: 0;
+}
+
+.site-footer {
+  margin-top: auto;
+  border-top: 1px solid #e6e6e6;
+  background: #f8f8f8;
+  padding: 16px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-size: 0.62rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #919191;
+}
+
+.footer-links {
+  display: flex;
+  gap: 18px;
+}
+
+.footer-links a {
+  text-decoration: none;
+}
+
+.spin {
+  animation: spin 0.9s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.toast-stack {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 60;
+  width: min(380px, calc(100vw - 24px));
+  display: grid;
+  gap: 10px;
+}
+
+.toast {
+  border: 1px solid #d8d8d8;
+  background: rgba(255, 255, 255, 0.96);
+  backdrop-filter: blur(8px);
+  padding: 12px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.08);
+}
+
+.toast p {
+  margin: 0;
+  font-size: 0.84rem;
+  line-height: 1.4;
+}
+
+.toast.error {
+  border-left: 3px solid #b42318;
+}
+
+.toast.success {
+  border-left: 3px solid #067647;
+}
+
+.toast.info {
+  border-left: 3px solid #175cd3;
+}
+
+.toast-actions {
+  margin-top: 8px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.toast-action,
+.toast-close {
+  border: 1px solid #d6d6d6;
+  background: #fafafa;
+  color: #111;
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+
+.toast-action:hover,
+.toast-close:hover {
+  background: #efefef;
+}
+
+@media (max-width: 800px) {
+  .top-links {
+    gap: 16px;
+  }
+
+  .top-link {
+    font-size: 0.78rem;
+  }
+
+  .site-footer {
+    justify-content: center;
+  }
+}
+
+@media (max-width: 620px) {
+  .top-links {
+    display: none;
+  }
+}

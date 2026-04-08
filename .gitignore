@@ -1,0 +1,49 @@
+# OS
+.DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+# Virtual environments
+.venv/
+venv/
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+token.json
+
+# Logs
+*.log
+
+# Build / distribution
+build/
+dist/
+*.egg-info/
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
+# Runtime data artifacts
+data/chat_memory.sqlite3
+data/vector_store/
+faiss_store/
+
+# Notebook outputs (optional)
+notebook/.ipynb_checkpoints/
+
+notebook
+data
+app.py
+main.py

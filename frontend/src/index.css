@@ -1,0 +1,6 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;700;800;900&family=Archivo:wght@600;700;800;900&display=swap');
+
+@import './styles/app.css';
+@import './styles/home.css';
+@import './styles/data.css';
+@import './styles/chat.css';
