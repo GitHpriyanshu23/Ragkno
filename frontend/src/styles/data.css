@@ -318,6 +318,73 @@
   color: #111;
 }
 
+.dark .data-header span,
+.dark .indexed-head p,
+.dark .sources-head p,
+.dark .indexed-meta,
+.dark .source-main small,
+.dark .connect-drive p,
+.dark .upload-panel p,
+.dark .upload-panel small {
+  color: var(--muted);
+}
+
+.dark .panel {
+  background: var(--surface-soft);
+  border-color: var(--border);
+}
+
+.dark .upload-panel {
+  border-color: var(--border-dark);
+  background: linear-gradient(180deg, #121212, #0c0c0c);
+}
+
+.dark .url-row input {
+  border-bottom-color: var(--border);
+  color: var(--text);
+}
+
+.dark .url-row input:focus {
+  border-bottom-color: var(--text);
+}
+
+.dark .chip-row span {
+  background: #141414;
+  border-color: var(--border);
+}
+
+.dark .notice {
+  border-color: var(--border);
+  background: #101010;
+  color: var(--muted);
+}
+
+.dark .indexed-sources-box {
+  border-color: var(--border);
+  background: linear-gradient(180deg, #0f0f0f, #090909);
+}
+
+.dark .indexed-sources-list li,
+.dark .source-row {
+  background: var(--surface);
+  border-color: var(--border);
+}
+
+.dark .indexed-type {
+  color: var(--text);
+  border-color: var(--border);
+  background: #141414;
+}
+
+.dark .source-icon {
+  background: #141414;
+  border-color: var(--border);
+}
+
+.dark .status.ok {
+  color: #f5f5f5;
+}
+
 .status.pending {
   color: #8a8a8a;
 }

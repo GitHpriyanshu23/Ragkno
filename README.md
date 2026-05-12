@@ -161,17 +161,6 @@ source .venv/bin/activate
 python evaluation/ragas_eval.py --dataset evaluation/testset.sample.json --top-k 3
 ```
 
-Expected input format (`question`, `ground_truth`):
-
-```json
-[
-	{
-		"question": "What optimization work did Barkha Navalani do?",
-		"ground_truth": "She worked on real-world projects involving model training and performance optimization."
-	}
-]
-```
-
 ## Notes for First Run
 
 - If you changed chunking/retrieval logic, re-index documents for best results.

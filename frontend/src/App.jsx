@@ -8,13 +8,17 @@ import {
   FolderSync,
   Globe,
   Link2,
+  Menu,
+  Moon,
   PanelLeftClose,
   PanelLeftOpen,
   RefreshCw,
   Send,
   Shield,
+  Sun,
   Upload,
   UserCircle2,
+  X,
 } from 'lucide-react'
 import {
   disconnectDrive,
@@ -30,24 +34,76 @@ import {
   syncDrive,
   unindexSource,
 } from './api.js'
+import darkLogo from './components/logos/lightlogo.png'
+import lightLogo from './components/logos/darklogo.png'
 
-function AppShell({ children, toasts, onDismissToast }) {
+function AppShell({ children, toasts, onDismissToast, darkMode, onDarkModeChange }) {
   const location = useLocation()
   const isChatRoute = location.pathname === '/chat'
+  const [mobileOpen, setMobileOpen] = useState(false)
+  const [isScrolled, setIsScrolled] = useState(false)
+
+  useEffect(() => {
+    const onScroll = () => {
+      const currentY = window.scrollY
+      setIsScrolled(currentY > 12)
+    }
+
+    onScroll()
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => window.removeEventListener('scroll', onScroll)
+  }, [])
+
+  useEffect(() => {
+    setMobileOpen(false)
+  }, [location.pathname])
 
   return (
     <div className="app-shell">
-      <header className="top-nav">
-        <div className="top-nav-inner">
-          <Link to="/" className="brand">RAGKNO</Link>
-          <nav className="top-links">
-            <NavLink to="/" className={({ isActive }) => `top-link ${isActive ? 'active' : ''}`}>Home</NavLink>
-            <NavLink to="/data" className={({ isActive }) => `top-link ${isActive ? 'active' : ''}`}>Data</NavLink>
-            <NavLink to="/chat" className={({ isActive }) => `top-link ${isActive ? 'active' : ''}`}>Chat</NavLink>
-          </nav>
-          <button className="icon-btn" aria-label="Profile">
-            <UserCircle2 size={18} />
-          </button>
+      <header className={`top-nav ${isScrolled ? 'scrolled' : ''}`}>
+        <div className="top-nav-track">
+          <div className="top-nav-shell">
+            <div className="top-nav-inner">
+              <Link to="/" className="brand">
+                <img src={darkMode ? darkLogo : lightLogo} alt="RAGKNO logo" className="brand-logo" />
+                <span>RAGKNO</span>
+              </Link>
+              <nav className="top-links">
+                <NavLink to="/" className={({ isActive }) => `top-link ${isActive ? 'active' : ''}`}>Home</NavLink>
+                <NavLink to="/data" className={({ isActive }) => `top-link ${isActive ? 'active' : ''}`}>Data</NavLink>
+                <NavLink to="/chat" className={({ isActive }) => `top-link ${isActive ? 'active' : ''}`}>Chat</NavLink>
+              </nav>
+              <div className="top-actions">
+                <button className="icon-btn" aria-label="Profile">
+                  <UserCircle2 size={18} />
+                </button>
+                <button
+                  className="icon-btn theme-icon-btn"
+                  type="button"
+                  aria-label={darkMode ? 'Switch to light theme' : 'Switch to dark theme'}
+                  onClick={() => onDarkModeChange(!darkMode)}
+                >
+                  {darkMode ? <Sun size={16} /> : <Moon size={16} />}
+                </button>
+                <button
+                  className="mobile-menu-btn"
+                  type="button"
+                  aria-label={mobileOpen ? 'Close menu' : 'Open menu'}
+                  aria-expanded={mobileOpen}
+                  onClick={() => setMobileOpen((prev) => !prev)}
+                >
+                  {mobileOpen ? <X size={18} /> : <Menu size={18} />}
+                </button>
+              </div>
+            </div>
+            {mobileOpen && (
+              <nav className="mobile-menu" aria-label="Mobile navigation">
+                <NavLink to="/" className={({ isActive }) => `mobile-menu-link ${isActive ? 'active' : ''}`}>Home</NavLink>
+                <NavLink to="/data" className={({ isActive }) => `mobile-menu-link ${isActive ? 'active' : ''}`}>Data</NavLink>
+                <NavLink to="/chat" className={({ isActive }) => `mobile-menu-link ${isActive ? 'active' : ''}`}>Chat</NavLink>
+              </nav>
+            )}
+          </div>
         </div>
       </header>
       <main className={isChatRoute ? 'chat-main' : ''}>{children}</main>
@@ -94,6 +150,7 @@ function HomePage() {
   const [wordIndex, setWordIndex] = useState(0)
   const [charIndex, setCharIndex] = useState(0)
   const [isDeleting, setIsDeleting] = useState(false)
+  const [heroPointer, setHeroPointer] = useState({ x: 50, y: 24 })
 
   const currentWord = words[wordIndex]
   const renderedWords = currentWord.slice(0, charIndex)
@@ -131,34 +188,55 @@ function HomePage() {
     return () => window.clearTimeout(timer)
   }, [charIndex, currentWord, isDeleting, words.length])
 
+  function handleHeroPointerMove(event) {
+    const rect = event.currentTarget.getBoundingClientRect()
+    if (!rect.width || !rect.height) {
+      return
+    }
+
+    const x = ((event.clientX - rect.left) / rect.width) * 100
+    const y = ((event.clientY - rect.top) / rect.height) * 100
+
+    setHeroPointer({
+      x: Math.max(0, Math.min(100, x)),
+      y: Math.max(0, Math.min(100, y)),
+    })
+  }
+
+  function handleHeroPointerLeave() {
+    setHeroPointer({ x: 50, y: 24 })
+  }
+
   return (
     <>
-      <section className="hero-section">
-        <div className="hero-grid">
-          <div className="hero-left">
-            <p className="hero-kicker">Intelligent Retrieval System</p>
-            <h1>
-              Rag application<br />
-              for your<br />
-              <span className="typed-word">{renderedWords || '\u00A0'}</span>
-            </h1>
-            <p className="hero-copy">
-              Connect, process, and query your knowledge base in one seamless, high-performance interface.
-              Engineered for speed, precision, and absolute clarity.
-            </p>
-            <div className="hero-actions">
-              <Link to="/data" className="btn-primary-solid">Get Started</Link>
-              <a href="#" className="btn-link">View Documentation</a>
-            </div>
-          </div>
-          <div className="hero-card" aria-hidden="true">
-            <div className="card-line" />
-            <div className="card-lines" />
-            <div className="card-grid">
-              <div />
-              <div />
-            </div>
-            <div className="glass-note">System Response</div>
+      <section
+        className="hero-section"
+        onMouseMove={handleHeroPointerMove}
+        onMouseLeave={handleHeroPointerLeave}
+      >
+        <div
+          className="hero-gradient"
+          aria-hidden="true"
+          style={{
+            '--mx': `${heroPointer.x}%`,
+            '--my': `${heroPointer.y}%`,
+          }}
+        />
+        <div className="hero-grid hero-grid-centered">
+          <p className="hero-kicker">Intelligent Retrieval System</p>
+          <h1>
+            Rag application for <br />
+            <span className="hero-your-word">
+              your <span className="typed-word">{renderedWords || '\u00A0'}</span>
+            </span>
+          </h1>
+          <p className="hero-copy">
+            Connect, process, and query your knowledge base in one seamless, high-performance interface.
+            Engineered for speed, precision, and absolute clarity.
+          </p>
+          <div className="hero-actions">
+            <Link to="/data" className="btn-primary-solid">Get Started</Link>
+            <a href="#" className="btn-link">View Documentation</a>
           </div>
         </div>
       </section>
@@ -205,16 +283,87 @@ function HomePage() {
       <section className="connect-section">
         <div className="connect-text">
           <h2>Connect Everything.</h2>
-          <ol>
-            <li>Google Drive & Workspace</li>
-            <li>Complex PDFs & Tables</li>
-            <li>Live Web Crawling</li>
-          </ol>
+          <div className="connect-list">
+            <article className="connect-item">
+              <span className="connect-index">01</span>
+              <div>
+                <h3>Google Drive & Workspace</h3>
+                <p>Sync your entire organizational memory in seconds.</p>
+              </div>
+            </article>
+            <article className="connect-item">
+              <span className="connect-index">02</span>
+              <div>
+                <h3>Complex PDFs & Tables</h3>
+                <p>Extract structural data from static files with zero loss.</p>
+              </div>
+            </article>
+            <article className="connect-item">
+              <span className="connect-index">03</span>
+              <div>
+                <h3>Live Web Crawling</h3>
+                <p>Maintain live indexes of external documentation and sites.</p>
+              </div>
+            </article>
+          </div>
         </div>
         <div className="connect-tiles">
-          <div className="tile large" />
-          <div className="tile" />
-          <div className="tile dark-tile">Optimized For Enterprise Deployment</div>
+          <div className="tile large">
+            <img src="https://lh3.googleusercontent.com/aida-public/AB6AXuBz8bKYbpHZXQ0ZeOygn7P1BsSt3YNva8mU-5_g74EsVxckN6Q_RMNbltzkEn2PG2rUOiNc0PME0fIKxQUeQ2q_ucBjijitFm78A_pT_6bzGLmRgQ7AtNLUf3L57fg2sBWmL5BqYN2QE3kPJNT3qDXzWkedV3qrxhyA3PrJVC5iStCxCzjKUryJu5jXZV4s1hg9eJ6wGTLYvvSnt3CX2DKRPkl_2Q_1vGpA_lDLdbWcq8mLjC2VTThhPy16JlbjclMkWqC8VJG5ROA"
+              alt="Enterprise data center racks"
+            />
+          </div>
+          <div className="tile">
+            <img src="https://lh3.googleusercontent.com/aida-public/AB6AXuCzDclr5-K_0keg3zpcw-bkBh_F-65xi2sd7GzQq-3qpfkJsI7xewQ1M1f-vS-q40wy0qPh8BZTjd7tZ8ahrXGOSTxh1Bl6psKPqgTyW398JbzeexijoYVWan6muuU1ikW8dzKLen2_cQMdyfiInX2GEUrENnfxt8VaaHd5_pkUp1U8XE3_bQhcSw6YJhE98lyqB25q_nMykp6Dpz98KCSM89PZr5uftDB7F2v76DXB7DBswvMdG45CrkpRPg63BM0lqvSYMFXLpUA"
+              alt="Data stream pattern"
+            />
+          </div>
+          <div className="tile dark-tile">
+            <span>Optimized For</span>
+            <span>Enterprise</span>
+            <span>Deployment</span>
+          </div>
+        </div>
+      </section>
+
+      <section className="faq-section">
+        <div className="faq-head">
+          <h2>Frequently Asked Questions.</h2>
+          <p>Everything you need to know before deploying your knowledge archive.</p>
+        </div>
+
+        <div className="faq-list">
+          <details className="faq-item" open>
+            <summary>What data sources can I connect?</summary>
+            <p>
+              You can connect Google Drive, upload local files like PDF/DOCX/TXT, and ingest public URLs.
+              All sources are indexed into your retrieval pipeline.
+            </p>
+          </details>
+
+          <details className="faq-item">
+            <summary>How does the assistant cite answers?</summary>
+            <p>
+              Every generated answer can include source-backed citations linked to retrieved chunks, so you can
+              verify where each claim came from.
+            </p>
+          </details>
+
+          <details className="faq-item">
+            <summary>Is chat memory isolated by session?</summary>
+            <p>
+              Yes. Chat context is tracked per session/thread, and you can clear memory anytime from the chat
+              controls.
+            </p>
+          </details>
+
+          <details className="faq-item">
+            <summary>Can I evaluate retrieval quality?</summary>
+            <p>
+              Yes. The project includes RAGAS-based evaluation tooling to measure faithfulness, answer relevancy,
+              and context precision on your test set.
+            </p>
+          </details>
         </div>
       </section>
 
@@ -1103,7 +1252,7 @@ function ChatPage({ onToast }) {
         <div className="message-stack">
           {!messages.length && !loading && (
             <div className="message assistant">
-              <div className="bubble">Start a new conversation. Your chat title will be created from your first message.</div>
+              <div className="bubble">Start a new conversation.</div>
             </div>
           )}
 
@@ -1222,7 +1371,25 @@ function HandleOAuthRedirect() {
 }
 
 export default function App() {
+  const THEME_KEY = 'ragkno_theme_mode_v1'
   const [toasts, setToasts] = useState([])
+  const [darkMode, setDarkMode] = useState(() => {
+    try {
+      const saved = window.localStorage.getItem(THEME_KEY)
+      if (saved === 'dark') return true
+      if (saved === 'light') return false
+      return window.matchMedia?.('(prefers-color-scheme: dark)').matches ?? false
+    } catch {
+      return false
+    }
+  })
+
+  useEffect(() => {
+    const root = document.documentElement
+    root.classList.toggle('dark', darkMode)
+    root.style.colorScheme = darkMode ? 'dark' : 'light'
+    window.localStorage.setItem(THEME_KEY, darkMode ? 'dark' : 'light')
+  }, [darkMode])
 
   const pushToast = useCallback((toast) => {
     if (!toast?.message) {
@@ -1257,7 +1424,12 @@ export default function App() {
     <BrowserRouter>
       <ScrollToTop />
       <HandleOAuthRedirect />
-      <AppShell toasts={toasts} onDismissToast={dismissToast}>
+      <AppShell
+        toasts={toasts}
+        onDismissToast={dismissToast}
+        darkMode={darkMode}
+        onDarkModeChange={setDarkMode}
+      >
         <Routes>
           <Route path="/" element={<HomePage />} />
           <Route path="/data" element={<DataPage onToast={pushToast} />} />
