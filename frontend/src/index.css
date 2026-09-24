@@ -2,5 +2,6 @@
 
 @import './styles/app.css';
 @import './styles/home.css';
+@import './styles/login.css';
 @import './styles/data.css';
 @import './styles/chat.css';

@@ -6,6 +6,7 @@ from pathlib import Path
 from datasets import Dataset
 from dotenv import load_dotenv
 from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_openai import ChatOpenAI
 from langchain_google_genai import ChatGoogleGenerativeAI
 from ragas import evaluate
 from ragas.metrics import answer_relevancy, context_precision, faithfulness
@@ -52,7 +53,9 @@ def main() -> None:
     parser.add_argument("--dataset", type=str, required=True, help="Path to a JSON array test set")
     parser.add_argument("--top-k", type=int, default=3, help="Retriever top-k")
     parser.add_argument("--persist-dir", type=str, default="faiss_store", help="Vector store directory")
-    parser.add_argument("--llm-model", type=str, default=os.getenv("GOOGLE_LLM_MODEL", "gemma-3-12b-it"))
+    agentrouter_key = os.getenv("AGENTROUTER_API_KEY") or os.getenv("AGENT_ROUTER_API_KEY")
+    default_model = "gpt-5.6-sol" if agentrouter_key else os.getenv("GOOGLE_LLM_MODEL", "gemma-3-12b-it")
+    parser.add_argument("--llm-model", type=str, default=os.getenv("AGENTROUTER_MODEL", default_model))
     args = parser.parse_args()
 
     load_dotenv()
@@ -60,16 +63,19 @@ def main() -> None:
     if not dataset_path.exists():
         raise FileNotFoundError(f"Dataset file not found: {dataset_path}")
 
-    api_key = os.getenv("GOOGLE_API_KEY")
-    if not api_key:
-        raise ValueError("GOOGLE_API_KEY is missing. Add it to .env before running evaluation.")
-
     questions = _load_dataset(dataset_path)
     rag = RAGSearch(persist_dir=args.persist_dir)
     eval_rows = _build_eval_rows(rag, questions, top_k=args.top_k)
     eval_dataset = Dataset.from_list(eval_rows)
 
-    eval_llm = ChatGoogleGenerativeAI(google_api_key=api_key, model=args.llm_model)
+    if agentrouter_key:
+        base_url = os.getenv("AGENTROUTER_BASE_URL", "https://agentrouter.org/v1")
+        eval_llm = ChatOpenAI(api_key=agentrouter_key, base_url=base_url, model=args.llm_model)
+    else:
+        google_api_key = os.getenv("GOOGLE_API_KEY")
+        if not google_api_key:
+            raise ValueError("Neither AGENTROUTER_API_KEY nor GOOGLE_API_KEY found in .env.")
+        eval_llm = ChatGoogleGenerativeAI(google_api_key=google_api_key, model=args.llm_model)
     eval_embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
 
     result = evaluate(

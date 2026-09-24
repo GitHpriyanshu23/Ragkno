@@ -1,0 +1,13 @@
+.venv
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.env.local
+.DS_Store
+.git
+.gitignore
+frontend/node_modules
+frontend/dist
+evaluation/
+note.txt

@@ -1,0 +1,217 @@
+/* Modal Backdrops & Dialogs */
+
+.app-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  padding: 1rem;
+  animation: modalFadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes modalFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.app-modal-card {
+  background: #ffffff;
+  color: #18181b;
+  width: 100%;
+  max-width: 580px;
+  max-height: 85vh;
+  border-radius: 20px;
+  border: 1px solid #e4e4e7;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: modalSlideUp 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.dark .app-modal-card,
+[data-theme="dark"] .app-modal-card {
+  background: #111113;
+  color: #f4f4f5;
+  border-color: rgba(255, 255, 255, 0.1);
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.65);
+}
+
+@keyframes modalSlideUp {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.app-modal-header {
+  padding: 1.25rem 1.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid #f4f4f5;
+}
+
+.dark .app-modal-header,
+[data-theme="dark"] .app-modal-header {
+  border-bottom-color: rgba(255, 255, 255, 0.08);
+}
+
+.app-modal-header h3 {
+  font-size: 1.15rem;
+  font-weight: 700;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.app-modal-close-btn {
+  background: transparent;
+  border: none;
+  color: #71717a;
+  cursor: pointer;
+  padding: 0.35rem;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+}
+
+.app-modal-close-btn:hover {
+  background: #f4f4f5;
+  color: #18181b;
+}
+
+.dark .app-modal-close-btn:hover,
+[data-theme="dark"] .app-modal-close-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #ffffff;
+}
+
+.app-modal-body {
+  padding: 1.5rem;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+/* Settings Form Sections */
+.settings-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.settings-section-title {
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #71717a;
+  margin-bottom: 0.25rem;
+}
+
+.settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1rem;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+}
+
+.dark .settings-row,
+[data-theme="dark"] .settings-row {
+  background: rgba(255, 255, 255, 0.03);
+  border-color: rgba(255, 255, 255, 0.07);
+}
+
+.settings-label strong {
+  display: block;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.settings-label span {
+  font-size: 0.8rem;
+  color: #64748b;
+}
+
+.dark .settings-label span,
+[data-theme="dark"] .settings-label span {
+  color: #94a3b8;
+}
+
+.settings-input,
+.settings-select {
+  padding: 0.45rem 0.75rem;
+  border-radius: 8px;
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+  color: inherit;
+  font-size: 0.85rem;
+  outline: none;
+}
+
+.dark .settings-input,
+.dark .settings-select,
+[data-theme="dark"] .settings-input,
+[data-theme="dark"] .settings-select {
+  background: #18181b;
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+/* Help & Shortcuts */
+.shortcuts-grid {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  row-gap: 0.75rem;
+  column-gap: 1.5rem;
+  align-items: center;
+}
+
+.shortcut-kbd {
+  background: #f1f5f9;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  padding: 0.2rem 0.5rem;
+  font-size: 0.75rem;
+  font-family: monospace;
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+.dark .shortcut-kbd,
+[data-theme="dark"] .shortcut-kbd {
+  background: #27272a;
+  border-color: #3f3f46;
+  color: #e4e4e7;
+}
+
+/* Modal Footer */
+.app-modal-footer {
+  padding: 1rem 1.5rem;
+  border-top: 1px solid #f4f4f5;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.75rem;
+}
+
+.dark .app-modal-footer,
+[data-theme="dark"] .app-modal-footer {
+  border-top-color: rgba(255, 255, 255, 0.08);
+}

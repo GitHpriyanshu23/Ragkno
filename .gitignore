@@ -45,5 +45,5 @@ notebook/.ipynb_checkpoints/
 
 notebook
 data
-app.py
-main.py
+/app.py
+/main.py

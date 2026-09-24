@@ -3,6 +3,7 @@ import re
 from collections.abc import Iterator
 
 from dotenv import load_dotenv
+from langchain_openai import ChatOpenAI
 from langchain_google_genai import ChatGoogleGenerativeAI
 from sentence_transformers import CrossEncoder
 
@@ -17,15 +18,13 @@ load_dotenv()
 
 class RAGSearch:
     FALLBACK_MODELS = [
-        "gemma-3-1b-it",
-        "gemma-3-4b-it",
-        "gemma-3-12b-it",
-        "gemma-3-27b-it",
-        "gemma-3n-e4b-it",
-        "gemma-3n-e2b-it",
+        "claude-opus-4-8",
+        "claude-opus-5",
+        "deepseek-v4-flash",
+        "gpt-6-astra",
     ]
 
-    def __init__(self, persist_dir: str = "faiss_store", embedding_model: str = "all-MiniLM-L6-v2", llm_model: str = "gemma-4-26b-it"):
+    def __init__(self, persist_dir: str = "faiss_store", embedding_model: str = "all-MiniLM-L6-v2", llm_model: str = "gpt-5.6-sol"):
         self.vectorstore = FaissVectorStore(persist_dir, embedding_model)
         # Load or build vectorstore
         faiss_path = os.path.join(persist_dir, "faiss.index")
@@ -37,16 +36,40 @@ class RAGSearch:
         else:
             self.vectorstore.load()
 
-        google_api_key = os.getenv("GOOGLE_API_KEY")
-        if not google_api_key:
-            raise ValueError("GOOGLE_API_KEY is missing. Add it to your environment or .env file.")
+        self.agentrouter_api_key = os.getenv("AGENTROUTER_API_KEY") or os.getenv("AGENT_ROUTER_API_KEY")
+        self.agentrouter_base_url = os.getenv("AGENTROUTER_BASE_URL", "https://agentrouter.org/v1")
+        self.google_api_key = os.getenv("GOOGLE_API_KEY")
 
-        # Allow changing model from env without code edits.
-        self.llm_model = os.getenv("GOOGLE_LLM_MODEL", llm_model)
-        self.google_api_key = google_api_key
-
-        self.llm = ChatGoogleGenerativeAI(google_api_key=self.google_api_key, model=self.llm_model)
-        print(f"[INFO] Google LLM initialized: {self.llm_model}")
+        if self.agentrouter_api_key:
+            self.provider = "agentrouter"
+            self.llm_model = os.getenv("AGENTROUTER_MODEL", llm_model)
+            self.agentrouter_headers = {
+                "User-Agent": "codex_cli_rs/0.1.0",
+                "x-app": "cli",
+            }
+            self.llm = ChatOpenAI(
+                api_key=self.agentrouter_api_key,
+                base_url=self.agentrouter_base_url,
+                model=self.llm_model,
+                streaming=True,
+                default_headers=self.agentrouter_headers,
+            )
+            print(f"[INFO] AgentRouter LLM initialized: {self.llm_model} at {self.agentrouter_base_url}")
+        elif self.google_api_key:
+            self.provider = "google"
+            self.llm_model = os.getenv("GOOGLE_LLM_MODEL", "gemma-3-4b-it")
+            self.FALLBACK_MODELS = [
+                "gemma-3-1b-it",
+                "gemma-3-4b-it",
+                "gemma-3-12b-it",
+                "gemma-3-27b-it",
+            ]
+            self.llm = ChatGoogleGenerativeAI(google_api_key=self.google_api_key, model=self.llm_model)
+            print(f"[INFO] Google LLM initialized: {self.llm_model}")
+        else:
+            raise ValueError(
+                "Neither AGENTROUTER_API_KEY nor GOOGLE_API_KEY is configured in your .env file."
+            )
 
         # Optional semantic reranker for domain-agnostic retrieval quality.
         self.reranker_model = os.getenv("RAG_RERANKER_MODEL", "cross-encoder/ms-marco-MiniLM-L-6-v2")
@@ -59,20 +82,47 @@ class RAGSearch:
         self._bm25_rows = []
 
     def _try_switch_model(self, model_name: str) -> None:
-        self.llm = ChatGoogleGenerativeAI(google_api_key=self.google_api_key, model=model_name)
-        self.llm_model = model_name
-        print(f"[INFO] Switched Google LLM model to: {model_name}")
+        if self.provider == "agentrouter":
+            self.llm = ChatOpenAI(
+                api_key=self.agentrouter_api_key,
+                base_url=self.agentrouter_base_url,
+                model=model_name,
+                streaming=True,
+                default_headers=getattr(self, "agentrouter_headers", {
+                    "User-Agent": "codex_cli_rs/0.1.0",
+                    "x-app": "cli",
+                }),
+            )
+            self.llm_model = model_name
+            print(f"[INFO] Switched AgentRouter LLM model to: {model_name}")
+        else:
+            self.llm = ChatGoogleGenerativeAI(google_api_key=self.google_api_key, model=model_name)
+            self.llm_model = model_name
+            print(f"[INFO] Switched Google LLM model to: {model_name}")
 
     @staticmethod
     def _should_fallback_for_error(error_text: str) -> bool:
+        lower = str(error_text or "").lower()
         return any(
-            key in error_text for key in [
-                "NOT_FOUND",
+            key in lower for key in [
+                "not_found",
                 "is not found",
-                "RESOURCE_EXHAUSTED",
+                "resource_exhausted",
+                "budget pool",
+                "exhausted",
+                "unauthorized client",
+                "401",
+                "402",
+                "404",
                 "429",
                 "quota",
                 "rate limit",
+                "overloaded",
+                "server_error",
+                "500",
+                "502",
+                "503",
+                "504",
             ]
         )
 
@@ -96,8 +146,7 @@ class RAGSearch:
                     print(f"[WARN] Fallback model '{model}' failed: {fallback_err}")
 
             raise RuntimeError(
-                "No available model worked. Set GOOGLE_LLM_MODEL to a supported model, "
-                "for example 'gemma-3-4b-it' or 'gemma-3-12b-it'."
+                f"No available model worked. Primary '{self.llm_model}' and fallbacks {candidates} failed."
             ) from err
 
     def _stream_with_fallback(self, prompt: str) -> Iterator[str]:

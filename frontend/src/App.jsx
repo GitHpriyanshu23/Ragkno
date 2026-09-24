@@ -1,45 +1,75 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { BrowserRouter, Link, NavLink, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
+import { BrowserRouter, Link, Navigate, NavLink, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
+import Lenis from 'lenis'
+import { HugeiconsIcon } from '@hugeicons/react'
+import { LayoutAlignLeftIcon } from '@hugeicons/core-free-icons'
 import {
   ArrowUp,
+  ChevronDown,
+  ChevronRight,
+  ChevronsUpDown,
   Cloud,
+  CircleHelp,
   Database,
+  Download,
   FileText,
   FolderSync,
   Globe,
+  Info,
   Link2,
+  LogOut,
   Menu,
-  Moon,
+  MessageSquare,
+  MessageSquareHeart,
+  PanelLeft,
   PanelLeftClose,
-  PanelLeftOpen,
+  Plus,
   RefreshCw,
+  Search,
   Send,
   Shield,
-  Sun,
+  Settings,
+  SquarePen,
+  Trash2,
   Upload,
-  UserCircle2,
   X,
 } from 'lucide-react'
 import {
   disconnectDrive,
   getAuthStatus,
   getAuthUrl,
+  getCurrentUser,
   getDriveFiles,
+  getGoogleLoginUrl,
   getIndexedSources,
   ingestFiles,
   ingestUrl,
+  logoutUser,
   queryRAG,
   queryRAGStream,
   resetChatMemory,
   syncDrive,
   unindexSource,
+  submitFeedback,
+  API_BASE,
 } from './api.js'
-import darkLogo from './components/logos/lightlogo.png'
-import lightLogo from './components/logos/darklogo.png'
+import FeedbackModal from './components/FeedbackModal.jsx'
+import ChatGPTSettingsModal from './components/ChatGPTSettingsModal.jsx'
+import DotGrid from './components/DotGrid.jsx'
+import brandLogo from './assets/figma-logo-mark.svg'
+import { useI18n } from './lib/i18n.jsx'
+import googleLogo from './assets/google-logo-2025.webp'
+import heroImage from './assets/ragkno-hero.png'
+import serverRacksImage from './assets/server-racks.png'
+import serverCablesImage from './assets/server-cables.png'
+import ctaTexture from './assets/cta-texture.png'
 
-function AppShell({ children, toasts, onDismissToast, darkMode, onDarkModeChange }) {
+function AppShell({ children, toasts, onDismissToast }) {
   const location = useLocation()
   const isChatRoute = location.pathname === '/chat'
+  const isAppRoute = location.pathname.startsWith('/chat')
+  const isHomeRoute = location.pathname === '/'
+  const isLoginRoute = location.pathname === '/login'
   const [mobileOpen, setMobileOpen] = useState(false)
   const [isScrolled, setIsScrolled] = useState(false)
 
@@ -60,54 +90,51 @@ function AppShell({ children, toasts, onDismissToast, darkMode, onDarkModeChange
 
   return (
     <div className="app-shell">
-      <header className={`top-nav ${isScrolled ? 'scrolled' : ''}`}>
-        <div className="top-nav-track">
-          <div className="top-nav-shell">
-            <div className="top-nav-inner">
-              <Link to="/" className="brand">
-                <img src={darkMode ? darkLogo : lightLogo} alt="RAGKNO logo" className="brand-logo" />
-                <span>RAGKNO</span>
-              </Link>
-              <nav className="top-links">
-                <NavLink to="/" className={({ isActive }) => `top-link ${isActive ? 'active' : ''}`}>Home</NavLink>
-                <NavLink to="/data" className={({ isActive }) => `top-link ${isActive ? 'active' : ''}`}>Data</NavLink>
-                <NavLink to="/chat" className={({ isActive }) => `top-link ${isActive ? 'active' : ''}`}>Chat</NavLink>
-              </nav>
-              <div className="top-actions">
-                <button className="icon-btn" aria-label="Profile">
-                  <UserCircle2 size={18} />
-                </button>
-                <button
-                  className="icon-btn theme-icon-btn"
-                  type="button"
-                  aria-label={darkMode ? 'Switch to light theme' : 'Switch to dark theme'}
-                  onClick={() => onDarkModeChange(!darkMode)}
-                >
-                  {darkMode ? <Sun size={16} /> : <Moon size={16} />}
-                </button>
-                <button
-                  className="mobile-menu-btn"
-                  type="button"
-                  aria-label={mobileOpen ? 'Close menu' : 'Open menu'}
-                  aria-expanded={mobileOpen}
-                  onClick={() => setMobileOpen((prev) => !prev)}
-                >
-                  {mobileOpen ? <X size={18} /> : <Menu size={18} />}
-                </button>
+      {!isAppRoute && !isLoginRoute && (
+        <header className={`top-nav ${isHomeRoute ? 'home-nav' : 'inner-nav'} ${isScrolled ? 'scrolled' : ''}`}>
+          <div className="top-nav-track">
+            <div className="top-nav-shell">
+              <div className="top-nav-inner">
+                <Link to="/" className="brand">
+                  <img src={brandLogo} alt="RAGKNO logo" className="brand-logo" />
+                  <span>RAGKNO</span>
+                </Link>
+                <nav className="top-links">
+                  <NavLink to="/" className={({ isActive }) => `top-link ${isActive ? 'active' : ''}`}>Home</NavLink>
+                  <NavLink to="/data" className={({ isActive }) => `top-link ${isActive ? 'active' : ''}`}>Data</NavLink>
+                  <NavLink to="/chat" className={({ isActive }) => `top-link ${isActive ? 'active' : ''}`}>Chat</NavLink>
+                </nav>
+                <div className="top-actions">
+                  <Link to="/chat" className="navbar-button secondary">Login</Link>
+                  <Link to="/data" className="navbar-button primary">Get started</Link>
+                  <button
+                    className="mobile-menu-btn"
+                    type="button"
+                    aria-label={mobileOpen ? 'Close menu' : 'Open menu'}
+                    aria-expanded={mobileOpen}
+                    onClick={() => setMobileOpen((prev) => !prev)}
+                  >
+                    {mobileOpen ? <X size={18} /> : <Menu size={18} />}
+                  </button>
+                </div>
               </div>
+              {mobileOpen && (
+                <nav className="mobile-menu" aria-label="Mobile navigation">
+                  <NavLink to="/" className={({ isActive }) => `mobile-menu-link ${isActive ? 'active' : ''}`}>Home</NavLink>
+                  <NavLink to="/data" className={({ isActive }) => `mobile-menu-link ${isActive ? 'active' : ''}`}>Data</NavLink>
+                  <NavLink to="/chat" className={({ isActive }) => `mobile-menu-link ${isActive ? 'active' : ''}`}>Chat</NavLink>
+                  <div className="mobile-menu-actions">
+                    <Link to="/chat" className="navbar-button secondary" onClick={() => setMobileOpen(false)}>Login</Link>
+                    <Link to="/data" className="navbar-button primary" onClick={() => setMobileOpen(false)}>Get started</Link>
+                  </div>
+                </nav>
+              )}
             </div>
-            {mobileOpen && (
-              <nav className="mobile-menu" aria-label="Mobile navigation">
-                <NavLink to="/" className={({ isActive }) => `mobile-menu-link ${isActive ? 'active' : ''}`}>Home</NavLink>
-                <NavLink to="/data" className={({ isActive }) => `mobile-menu-link ${isActive ? 'active' : ''}`}>Data</NavLink>
-                <NavLink to="/chat" className={({ isActive }) => `mobile-menu-link ${isActive ? 'active' : ''}`}>Chat</NavLink>
-              </nav>
-            )}
           </div>
-        </div>
-      </header>
-      <main className={isChatRoute ? 'chat-main' : ''}>{children}</main>
-      {!isChatRoute && (
+        </header>
+      )}
+      <main className={isAppRoute ? 'chat-main' : isHomeRoute || isLoginRoute ? 'home-main' : 'page-main'}>{children}</main>
+      {!isAppRoute && !isLoginRoute && (
         <footer className="site-footer">
           <div>© 2026 RAGKNO ARCHIVE. ALL RIGHTS RESERVED.</div>
           <div className="footer-links">
@@ -146,99 +173,77 @@ function AppShell({ children, toasts, onDismissToast, darkMode, onDarkModeChange
 }
 
 function HomePage() {
-  const words = useMemo(() => ['Drive Docs', 'PDFs', 'Links', 'Social Media'], [])
+  const words = useMemo(() => ['Docs', 'Links', 'PDFs'], [])
   const [wordIndex, setWordIndex] = useState(0)
-  const [charIndex, setCharIndex] = useState(0)
-  const [isDeleting, setIsDeleting] = useState(false)
-  const [heroPointer, setHeroPointer] = useState({ x: 50, y: 24 })
 
   const currentWord = words[wordIndex]
-  const renderedWords = currentWord.slice(0, charIndex)
 
   useEffect(() => {
-    let timeoutMs = isDeleting ? 45 : 95
-
-    if (!isDeleting && charIndex === currentWord.length) {
-      timeoutMs = 1200
-    }
-
-    if (isDeleting && charIndex === 0) {
-      timeoutMs = 260
-    }
-
-    const timer = window.setTimeout(() => {
-      if (!isDeleting) {
-        if (charIndex < currentWord.length) {
-          setCharIndex((prev) => prev + 1)
-          return
-        }
-        setIsDeleting(true)
-        return
-      }
-
-      if (charIndex > 0) {
-        setCharIndex((prev) => prev - 1)
-        return
-      }
-
-      setIsDeleting(false)
+    const timer = window.setInterval(() => {
       setWordIndex((prev) => (prev + 1) % words.length)
-    }, timeoutMs)
+    }, 1800)
 
-    return () => window.clearTimeout(timer)
-  }, [charIndex, currentWord, isDeleting, words.length])
-
-  function handleHeroPointerMove(event) {
-    const rect = event.currentTarget.getBoundingClientRect()
-    if (!rect.width || !rect.height) {
-      return
-    }
-
-    const x = ((event.clientX - rect.left) / rect.width) * 100
-    const y = ((event.clientY - rect.top) / rect.height) * 100
-
-    setHeroPointer({
-      x: Math.max(0, Math.min(100, x)),
-      y: Math.max(0, Math.min(100, y)),
-    })
-  }
-
-  function handleHeroPointerLeave() {
-    setHeroPointer({ x: 50, y: 24 })
-  }
+    return () => window.clearInterval(timer)
+  }, [words.length])
 
   return (
     <>
-      <section
-        className="hero-section"
-        onMouseMove={handleHeroPointerMove}
-        onMouseLeave={handleHeroPointerLeave}
-      >
-        <div
-          className="hero-gradient"
-          aria-hidden="true"
-          style={{
-            '--mx': `${heroPointer.x}%`,
-            '--my': `${heroPointer.y}%`,
-          }}
-        />
-        <div className="hero-grid hero-grid-centered">
-          <p className="hero-kicker">Intelligent Retrieval System</p>
-          <h1>
-            Rag application for <br />
-            <span className="hero-your-word">
-              your <span className="typed-word">{renderedWords || '\u00A0'}</span>
-            </span>
-          </h1>
-          <p className="hero-copy">
-            Connect, process, and query your knowledge base in one seamless, high-performance interface.
-            Engineered for speed, precision, and absolute clarity.
-          </p>
-          <div className="hero-actions">
-            <Link to="/data" className="btn-primary-solid">Get Started</Link>
-            <a href="#" className="btn-link">View Documentation</a>
+      <section className="hero-section">
+        <img className="hero-image" src={heroImage} alt="Open field landscape representing an accessible knowledge workspace" />
+        <div className="hero-overlay" aria-hidden="true" />
+        <div className="hero-grid">
+          <div className="hero-copy-block">
+            <p className="hero-kicker"><Database size={13} /> Intelligent Retrieval System</p>
+            <h1>
+              Rag application <br />
+              <span className="hero-your-word">
+                for your <span key={currentWord} className="typed-word">{currentWord}</span>
+              </span>
+            </h1>
+            <p className="hero-copy">
+              Connect, process, and query your knowledge base in one seamless, high-performance interface.
+              Engineered for speed, precision, and absolute clarity.
+            </p>
+            <div className="hero-actions">
+              <Link to="/data" className="btn-primary-solid">Get Started <ArrowUp size={15} /></Link>
+              <Link to="/chat" className="btn-glass">View Documentation</Link>
+            </div>
           </div>
         </div>
+      </section>
+
+      <section className="prompt-band">
+        <div className="prompt-dot-grid" aria-hidden="true">
+          <DotGrid
+            dotSize={3}
+            gap={24}
+            baseColor="#d8d0bf"
+            activeColor="#a99c82"
+            proximity={120}
+            speedTrigger={90}
+            shockRadius={210}
+            shockStrength={1.8}
+            resistance={760}
+            returnDuration={1.35}
+          />
+        </div>
+        <div className="prompt-card">
+          <p>
+            Crafting intelligent retrieval experiences that blend speed, clarity, and purpose.
+            Every query is designed to surface your knowledge effectively while maintaining precision and simplicity.
+          </p>
+          <div className="prompt-tags">
+            <span><Database size={12} /> Data Processing</span>
+            <span><FolderSync size={12} /> Knowledge Base</span>
+            <span><FileText size={12} /> Document Q&A</span>
+            <span><ArrowUp size={12} /> Analytics</span>
+          </div>
+          <div className="prompt-actions">
+            <button type="button" className="language-pill">English</button>
+            <Link to="/data" className="generate-pill">Generate <ArrowUp size={14} /></Link>
+          </div>
+        </div>
+        <p className="built-label">Built for your docs</p>
       </section>
 
       <section className="feature-section">
@@ -253,29 +258,20 @@ function HomePage() {
           <div className="feature-label">Section 01 // Capabilities</div>
         </div>
         <div className="feature-grid">
-          <article className="feature-card wide">
-            <FolderSync size={28} />
+          <article className="feature-card">
+            <span className="feature-icon"><FolderSync size={18} /></span>
             <h3>Universal Knowledge Mapping</h3>
             <p>Map relationships between documents, links, and drive assets with semantic precision.</p>
           </article>
-          <article className="feature-card dark">
-            <Shield size={28} />
+          <article className="feature-card dark-card">
+            <span className="feature-icon"><Shield size={18} /></span>
             <h3>Hardened Privacy</h3>
             <p>Enterprise-grade controls keep each query and source isolated and secure.</p>
           </article>
           <article className="feature-card">
-            <ArrowUp size={28} />
+            <span className="feature-icon"><ArrowUp size={18} /></span>
             <h3>Millisecond Latency</h3>
             <p>Retrieve top context chunks instantly from your indexed knowledge base.</p>
-          </article>
-          <article className="feature-image-card">
-            <img
-              src="https://lh3.googleusercontent.com/aida-public/AB6AXuDDG2l_srBp6LKa1W9Xd7RuaCMjPa8_mBYk9g8o0Mb2OdiaNAtgWUVP_8GxsZhi0uQgW7J0TeLxCurrbC3SdR-5UAyT9Yh8ZwpvL7LjqONmc397dHkEe8C8TAZ_4UHtU7i9QqXGOzrsuWFWCl0OdR3sCU3xRw3SG12aLB9YjwgoNwF1zyCfaHsnRDwYwryD1vq6rR6-VihcBK17ioHhqkiUXxG4D1laZ_UlMQj3BYgljjkQWBt3nCHOYO8oWXk6BU8ag3E3FSQyk4s"
-              alt="Abstract digital visualization of data nodes and network connections"
-            />
-            <div className="feature-image-overlay">
-              <h3>Deep Contextual Intelligence</h3>
-            </div>
           </article>
         </div>
       </section>
@@ -309,19 +305,15 @@ function HomePage() {
         </div>
         <div className="connect-tiles">
           <div className="tile large">
-            <img src="https://lh3.googleusercontent.com/aida-public/AB6AXuBz8bKYbpHZXQ0ZeOygn7P1BsSt3YNva8mU-5_g74EsVxckN6Q_RMNbltzkEn2PG2rUOiNc0PME0fIKxQUeQ2q_ucBjijitFm78A_pT_6bzGLmRgQ7AtNLUf3L57fg2sBWmL5BqYN2QE3kPJNT3qDXzWkedV3qrxhyA3PrJVC5iStCxCzjKUryJu5jXZV4s1hg9eJ6wGTLYvvSnt3CX2DKRPkl_2Q_1vGpA_lDLdbWcq8mLjC2VTThhPy16JlbjclMkWqC8VJG5ROA"
-              alt="Enterprise data center racks"
-            />
+            <img src={serverRacksImage} alt="Server racks for connected knowledge infrastructure" />
           </div>
           <div className="tile">
-            <img src="https://lh3.googleusercontent.com/aida-public/AB6AXuCzDclr5-K_0keg3zpcw-bkBh_F-65xi2sd7GzQq-3qpfkJsI7xewQ1M1f-vS-q40wy0qPh8BZTjd7tZ8ahrXGOSTxh1Bl6psKPqgTyW398JbzeexijoYVWan6muuU1ikW8dzKLen2_cQMdyfiInX2GEUrENnfxt8VaaHd5_pkUp1U8XE3_bQhcSw6YJhE98lyqB25q_nMykp6Dpz98KCSM89PZr5uftDB7F2v76DXB7DBswvMdG45CrkpRPg63BM0lqvSYMFXLpUA"
-              alt="Data stream pattern"
-            />
+            <img src={serverCablesImage} alt="Server cables representing data ingestion pipelines" />
           </div>
           <div className="tile dark-tile">
-            <span>Optimized For</span>
-            <span>Enterprise</span>
-            <span>Deployment</span>
+            <span>Optimized for</span>
+            <span>enterprise</span>
+            <span>deployment</span>
           </div>
         </div>
       </section>
@@ -333,7 +325,7 @@ function HomePage() {
         </div>
 
         <div className="faq-list">
-          <details className="faq-item" open>
+          <details className="faq-item">
             <summary>What data sources can I connect?</summary>
             <p>
               You can connect Google Drive, upload local files like PDF/DOCX/TXT, and ingest public URLs.
@@ -367,7 +359,7 @@ function HomePage() {
         </div>
       </section>
 
-      <section className="cta-section">
+      <section className="cta-section" style={{ '--cta-image': `url(${ctaTexture})` }}>
         <h2>Ready to archive the future?</h2>
         <div className="cta-actions">
           <Link className="btn-primary-solid" to="/data">Get Started Now</Link>
@@ -375,6 +367,77 @@ function HomePage() {
         </div>
       </section>
     </>
+  )
+}
+
+function PixelMaskVisual() {
+  return (
+    <div className="login-visual">
+      <img src={heroImage} alt="RagKno knowledge landscape" />
+      <div className="pixel-mask" aria-hidden="true" />
+    </div>
+  )
+}
+
+function LoginPage({ onUserChange, onToast }) {
+  const [loading, setLoading] = useState(false)
+
+  async function startGoogleLogin() {
+    setLoading(true)
+    try {
+      const { url } = await getGoogleLoginUrl()
+      window.location.href = url
+    } catch (error) {
+      setLoading(false)
+      onToast?.({ type: 'error', message: error.message || 'Unable to start Google login.' })
+    }
+  }
+
+  useEffect(() => {
+    let ignore = false
+    async function checkExistingSession() {
+      try {
+        const result = await getCurrentUser()
+        if (!ignore && result.authenticated) {
+          onUserChange?.(result.user)
+        }
+      } catch {
+        // Login page remains usable if the backend is not up yet.
+      }
+    }
+    void checkExistingSession()
+    return () => {
+      ignore = true
+    }
+  }, [onUserChange])
+
+  return (
+    <section className="login-page">
+      <div className="login-panel">
+        <Link to="/" className="login-brand">
+          <img src={brandLogo} alt="RAGKNO logo" />
+          <span>RagKno</span>
+        </Link>
+
+        <div className="login-copy">
+          <h1>Create your account</h1>
+          <button className="login-google-btn" type="button" onClick={startGoogleLogin} disabled={loading}>
+            <img className="google-mark" src={googleLogo} alt="" />
+            {loading ? 'Opening Google...' : 'Continue with Google'}
+          </button>
+          <p className="login-terms">
+            By continuing you agree to RagKno&apos;s terms and can connect data sources after sign in.
+          </p>
+        </div>
+
+        <div className="login-footer">
+          <span>© 2026 RagKno</span>
+          <span>Privacy</span>
+          <span>Terms</span>
+        </div>
+      </div>
+      <PixelMaskVisual />
+    </section>
   )
 }
 
@@ -770,11 +833,52 @@ function DataPage({ onToast }) {
           </ul>
         )}
       </section>
+
     </section>
   )
 }
 
-function ChatPage({ onToast }) {
+function UserAvatar({ user, displayName, className = ' ' }) {
+  const [attempt, setAttempt] = useState(0)
+  const initial = (displayName || user?.name || user?.email || 'U').trim().slice(0, 1).toUpperCase()
+
+  const sources = useMemo(() => {
+    const list = []
+    if (user?.avatar_url) {
+      const url = user.avatar_url.startsWith('http') ? user.avatar_url : `${API_BASE}${user.avatar_url}`
+      list.push(url)
+    }
+    if (user?.picture) {
+      const proxyUrl = `${API_BASE}/auth/avatar?url=${encodeURIComponent(user.picture)}`
+      if (!list.includes(proxyUrl)) list.push(proxyUrl)
+      if (!list.includes(user.picture)) list.push(user.picture)
+    }
+    return list
+  }, [user?.avatar_url, user?.picture])
+
+  useEffect(() => {
+    setAttempt(0)
+  }, [sources])
+
+  if (sources.length > 0 && attempt < sources.length) {
+    return (
+      <img
+        src={sources[attempt]}
+        alt={displayName || 'Profile'}
+        referrerPolicy="no-referrer"
+        loading="eager"
+        className={className}
+        onError={() => setAttempt((prev) => prev + 1)}
+      />
+    )
+  }
+
+  return <span className={className}>{initial}</span>
+}
+
+function ChatPage({ user, onUserChange, onToast }) {
+  const location = useLocation()
+  const navigate = useNavigate()
   const CHAT_THREADS_KEY = 'ragkno_chat_threads_v1'
   const ACTIVE_THREAD_KEY = 'ragkno_active_thread_v1'
 
@@ -812,6 +916,7 @@ function ChatPage({ onToast }) {
       ts: String(message?.ts || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })),
       sources: Array.isArray(message?.sources) ? message.sources : [],
       streaming: Boolean(message?.streaming),
+      action: message?.action || null,
     }
   }
 
@@ -946,12 +1051,48 @@ function ChatPage({ onToast }) {
   const [activeThreadId, setActiveThreadId] = useState(initialState.activeId)
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
+  const { t } = useI18n()
+  const [chatgptModalOpen, setChatgptModalOpen] = useState(false)
+  const [chatgptModalTab, setChatgptModalTab] = useState('general')
+  const [feedbackModalOpen, setFeedbackModalOpen] = useState(false)
+
+  const openChatGPTModal = (tab = 'general') => {
+    setChatgptModalTab(tab)
+    setChatgptModalOpen(true)
+  }
+
+  useEffect(() => {
+    function handleKeyDown(e) {
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === ',' || e.keyCode === 188)) {
+        e.preventDefault()
+        openChatGPTModal('general')
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [])
   const [error, setError] = useState('')
   const [hoveredCitation, setHoveredCitation] = useState(null)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [expandedSourceMessages, setExpandedSourceMessages] = useState(new Set())
   const [hoveredSourceMessage, setHoveredSourceMessage] = useState(null)
+  const [indexedSources, setIndexedSources] = useState([])
+  const [sourcesLoading, setSourcesLoading] = useState(false)
+  const [sourceMenuOpen, setSourceMenuOpen] = useState(false)
+  const [sourceModalOpen, setSourceModalOpen] = useState(false)
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false)
+  const [selectedSourceKeys, setSelectedSourceKeys] = useState(new Set())
+  const [quickUrl, setQuickUrl] = useState('')
+  const [quickUploading, setQuickUploading] = useState(false)
+  const [quickAddingUrl, setQuickAddingUrl] = useState(false)
+  const quickFileInputRef = useRef(null)
   const bottomRef = useRef(null)
+
+  const appView = location.pathname.endsWith('/data')
+    ? 'data'
+    : location.pathname.endsWith('/apps')
+      ? 'apps'
+      : 'chat'
 
   const sortedThreads = useMemo(
     () => [...threads].sort((a, b) => Number(b.updatedAt || 0) - Number(a.updatedAt || 0)),
@@ -964,6 +1105,9 @@ function ChatPage({ onToast }) {
   )
 
   const messages = activeThread?.messages || []
+  const rawFirstName = user?.name?.split(' ')?.[0] || user?.email?.split('@')?.[0] || 'there'
+  const firstName = rawFirstName ? `${rawFirstName.slice(0, 1).toUpperCase()}${rawFirstName.slice(1)}` : 'there'
+  const displayName = firstName === 'there' ? 'RagKno user' : firstName
 
   useEffect(() => {
     window.localStorage.setItem(CHAT_THREADS_KEY, JSON.stringify(threads))
@@ -981,6 +1125,122 @@ function ChatPage({ onToast }) {
       setActiveThreadId(threads[0].id)
     }
   }, [activeThread, threads])
+
+  async function refreshIndexedSources() {
+    setSourcesLoading(true)
+    try {
+      const result = await getIndexedSources()
+      const sources = result.sources || []
+      setIndexedSources(sources)
+      setSelectedSourceKeys((prev) => new Set([...prev].filter((key) => sources.some((item) => item.key === key))))
+    } catch (error) {
+      onToast?.({ type: 'error', message: error.message || 'Failed to load indexed sources.' })
+    } finally {
+      setSourcesLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    void refreshIndexedSources()
+  }, [])
+
+  function addGuidedIndexMessage(userText) {
+    if (!activeThread) return
+    const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    const userMessage = {
+      id: makeMessageId('user'),
+      role: 'user',
+      text: userText,
+      ts: now,
+      sources: [],
+      streaming: false,
+    }
+    const assistantMessage = {
+      id: makeMessageId('assistant'),
+      role: 'assistant',
+      text: `Hi ${user?.name?.split(' ')?.[0] || 'there'}, I can answer from your documents once your knowledge base has data. Please index a file, Drive document, or URL first.`,
+      ts: now,
+      sources: [],
+      streaming: false,
+      action: { label: 'Open Data Center', to: '/chat/data' },
+    }
+    updateActiveThread((thread) => ({
+      ...thread,
+      title: thread.messages.some((msg) => msg.role === 'user') ? thread.title : makeThreadTitleFromMessage(userText),
+      updatedAt: Date.now(),
+      messages: [...thread.messages, userMessage, assistantMessage],
+    }))
+  }
+
+  function toggleSourceSelection(key) {
+    setSelectedSourceKeys((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }
+
+  async function unindexSelectedSources() {
+    const keys = [...selectedSourceKeys]
+    if (keys.length === 0) return
+    const confirmed = window.confirm(`Unindex ${keys.length} selected source(s)?`)
+    if (!confirmed) return
+
+    try {
+      for (const key of keys) {
+        await unindexSource(key)
+      }
+      onToast?.({ type: 'success', message: `Unindexed ${keys.length} source(s).` })
+      setSelectedSourceKeys(new Set())
+      await refreshIndexedSources()
+    } catch (error) {
+      onToast?.({ type: 'error', message: error.message || 'Failed to unindex selected sources.' })
+    }
+  }
+
+  async function quickUploadFiles(files) {
+    const picked = Array.from(files || [])
+    if (picked.length === 0) return
+    setQuickUploading(true)
+    try {
+      const result = await ingestFiles(picked)
+      onToast?.({ type: 'success', message: result.message || 'Files indexed.' })
+      await refreshIndexedSources()
+      setSourceModalOpen(false)
+    } catch (error) {
+      onToast?.({ type: 'error', message: error.message || 'Upload failed.' })
+    } finally {
+      setQuickUploading(false)
+    }
+  }
+
+  async function quickAddUrl() {
+    if (!quickUrl.trim()) return
+    setQuickAddingUrl(true)
+    try {
+      const result = await ingestUrl(quickUrl.trim())
+      onToast?.({ type: 'success', message: result.message || 'URL indexed.' })
+      setQuickUrl('')
+      await refreshIndexedSources()
+      setSourceModalOpen(false)
+    } catch (error) {
+      onToast?.({ type: 'error', message: error.message || 'URL indexing failed.' })
+    } finally {
+      setQuickAddingUrl(false)
+    }
+  }
+
+  async function handleLogout() {
+    try {
+      await logoutUser()
+    } catch {
+      // Local logout still clears the UI session.
+    }
+    setProfileMenuOpen(false)
+    onUserChange?.(null)
+    navigate('/login', { replace: true })
+  }
 
   function updateActiveThread(updater) {
     if (!activeThread) {
@@ -1028,6 +1288,13 @@ function ChatPage({ onToast }) {
     }
 
     if (!activeThread) {
+      return
+    }
+
+    if (indexedSources.length === 0) {
+      addGuidedIndexMessage(text)
+      setInput('')
+      setError('')
       return
     }
 
@@ -1102,18 +1369,26 @@ function ChatPage({ onToast }) {
           streaming: false,
         }))
       } catch (fallbackError) {
+        const noIndexedData = String(fallbackError.message || '').toLowerCase().includes('no documents indexed')
         updateMessageById(assistantMessageId, (message) => ({
           ...message,
           streaming: false,
-          text: message.text || 'The response failed. Please retry.',
+          text: noIndexedData
+            ? `Hi ${user?.name?.split(' ')?.[0] || 'there'}, I can answer from your documents once your knowledge base has data. Please index a file, Drive document, or URL first.`
+            : message.text || 'The response failed. Please retry.',
+          action: noIndexedData ? { label: 'Open Data Center', to: '/chat/data' } : null,
         }))
-        setError(fallbackError.message)
-        onToast?.({
-          type: 'error',
-          message: fallbackError.message,
-          actionLabel: 'Retry',
-          onAction: () => {},
-        })
+        if (noIndexedData) {
+          setError('')
+        } else {
+          setError(fallbackError.message)
+          onToast?.({
+            type: 'error',
+            message: fallbackError.message,
+            actionLabel: 'Retry',
+            onAction: () => { },
+          })
+        }
       }
 
       if (streamError?.message) {
@@ -1130,6 +1405,9 @@ function ChatPage({ onToast }) {
     setActiveThreadId(newThread.id)
     setError('')
     setInput('')
+    setSourceMenuOpen(false)
+    setSourceModalOpen(false)
+    navigate('/chat')
   }
 
   async function resetCurrentChatMemory() {
@@ -1183,165 +1461,408 @@ function ChatPage({ onToast }) {
 
   return (
     <section className={`chat-page ${sidebarCollapsed ? 'collapsed' : ''}`}>
-      {sidebarCollapsed && (
-        <aside className="chat-collapsed-rail">
-          <button
-            className="sidebar-toggle-btn"
-            type="button"
-            onClick={() => setSidebarCollapsed(false)}
-            aria-label="Reveal sidebar"
-            title="Reveal sidebar"
-          >
-            <PanelLeftOpen size={16} />
-          </button>
-        </aside>
-      )}
-
       {!sidebarCollapsed && (
         <aside className="chat-sidebar">
           <div className="chat-sidebar-header">
-            <button
-              className="sidebar-toggle-btn"
-              type="button"
-              onClick={() => setSidebarCollapsed(true)}
-              aria-label="Collapse sidebar"
-              title="Collapse sidebar"
-            >
-              <PanelLeftClose size={16} />
+            <Link to="/chat" className="chat-sidebar-brand">
+              <img src={brandLogo} alt="RAGKNO logo" />
+              <span>RagKno</span>
+            </Link>
+            <div className="chat-sidebar-header-actions">
+              <button
+                className="sidebar-action-icon-btn"
+                type="button"
+                onClick={() => onToast('Search chats')}
+                aria-label="Search chats"
+                title="Search chats"
+              >
+                <Search size={16} />
+              </button>
+              <button
+                className="sidebar-toggle-btn"
+                type="button"
+                onClick={() => setSidebarCollapsed(true)}
+                aria-label="Collapse sidebar"
+                title="Collapse sidebar"
+              >
+                <PanelLeftClose size={17} />
+              </button>
+            </div>
+          </div>
+
+          <button className="history-btn new-chat-pill" onClick={startNewChat}>
+            <SquarePen size={14} />
+            <span>{t('newChat') || 'New chat'}</span>
+          </button>
+
+          <div className="sidebar-nav-group">
+            <button className={`history-btn ${appView === 'chat' ? 'active' : ''}`} onClick={() => navigate('/chat')}>
+              <MessageSquare size={14} /> <span>Chats</span>
+            </button>
+            <button className={`history-btn ${appView === 'data' ? 'active' : ''}`} onClick={() => navigate('/chat/data')}>
+              <Database size={14} /> <span>Data Center</span>
+            </button>
+            <button className={`history-btn ${appView === 'apps' ? 'active' : ''}`} onClick={() => navigate('/chat/apps')}>
+              <Cloud size={14} /> <span>{t('connectApps') || 'Connect Apps'}</span>
             </button>
           </div>
 
-          <h4>Previous Conversations</h4>
-          <button className="history-btn" onClick={startNewChat}>New Chat</button>
-          <button className="history-btn" onClick={resetCurrentChatMemory}>Clear Active Chat</button>
-
-          {sortedThreads.map((thread) => (
-            <div key={thread.id} className={`history-item ${thread.id === activeThread?.id ? 'active' : ''}`}>
-              <button
-                className={`history-btn ${thread.id === activeThread?.id ? 'active' : ''}`}
-                onClick={() => setActiveThreadId(thread.id)}
-              >
-                {thread.title || 'New Chat'}
-              </button>
-              <button
-                className="history-delete-btn"
-                aria-label={`Delete ${thread.title || 'chat'}`}
-                onClick={(event) => {
-                  event.stopPropagation()
-                  void deleteThread(thread.id)
-                }}
-              >
-                ×
-              </button>
-            </div>
-          ))}
-
-          <h4>Source Settings</h4>
-          <div className="toggle-row">
-            <span><Database size={14} /> Internal Docs</span>
-            <span className="toggle on" />
+          <div className="chat-sidebar-section-title">
+            <span>{t('yourChats') || 'Chats'}</span>
           </div>
-          <div className="toggle-row">
-            <span><Globe size={14} /> Web Index</span>
-            <span className="toggle" />
+
+          <div className="sidebar-threads-scroll">
+            {sortedThreads.map((thread) => (
+              <div key={thread.id} className={`history-item ${thread.id === activeThread?.id ? 'active' : ''}`}>
+                <button
+                  className={`history-btn ${thread.id === activeThread?.id ? 'active' : ''}`}
+                  onClick={() => setActiveThreadId(thread.id)}
+                  title={thread.title || 'New Chat'}
+                >
+                  {thread.title || 'New Chat'}
+                </button>
+                <button
+                  className="history-delete-btn"
+                  aria-label={`Delete ${thread.title || 'chat'}`}
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    void deleteThread(thread.id)
+                  }}
+                >
+                  <Trash2 size={13} />
+                </button>
+              </div>
+            ))}
+          </div>
+
+          <div className="chat-sidebar-footer">
+            {profileMenuOpen && (
+              <div className="profile-dropup">
+                <p>{user?.email || 'Signed in'}</p>
+                <button type="button" onClick={() => { setProfileMenuOpen(false); openChatGPTModal('general'); }}><Settings size={15} /> {t('settings')} <span>⇧⌘,</span></button>
+                <button type="button" onClick={() => { setProfileMenuOpen(false); openChatGPTModal('help'); }}><CircleHelp size={15} /> {t('helpFaq')}</button>
+                <button type="button" onClick={() => { setProfileMenuOpen(false); openChatGPTModal('about'); }}><Info size={15} /> {t('learnMore')} <ChevronRight size={14} /></button>
+                <button type="button" onClick={() => { setProfileMenuOpen(false); setFeedbackModalOpen(true); }}><MessageSquareHeart size={15} /> {t('giveFeedback')}</button>
+                <hr />
+                <button type="button" onClick={handleLogout}><LogOut size={15} /> {t('logOut')}</button>
+              </div>
+            )}
+            <button className="user-pill" type="button" onClick={() => setProfileMenuOpen((open) => !open)} aria-expanded={profileMenuOpen}>
+              <div className="user-avatar-badge">
+                <UserAvatar user={user} displayName={displayName} />
+              </div>
+              <div className="user-info-text">
+                <strong>{displayName}</strong>
+                <small>Go</small>
+              </div>
+              <ChevronsUpDown size={13} className="user-pill-chevron" />
+            </button>
           </div>
         </aside>
       )}
 
-      <section className="chat-canvas">
-        <div className="message-stack">
-          {!messages.length && !loading && (
-            <div className="message assistant">
-              <div className="bubble">Start a new conversation.</div>
+      <section className={`chat-canvas ${appView !== 'chat' ? 'utility-view' : ''} ${appView === 'chat' && messages.length === 0 ? 'is-empty' : ''}`}>
+        {sidebarCollapsed && (
+          <header className="chat-canvas-top-bar">
+            <button
+              className="canvas-toggle-btn"
+              type="button"
+              onClick={() => setSidebarCollapsed(false)}
+              aria-label="Open sidebar"
+              title="Open sidebar"
+            >
+              <PanelLeft size={18} />
+            </button>
+            <div className="canvas-model-selector" onClick={() => onToast('RagKno 1.0 (GPT-5.6-sol active)')}>
+              <span>RagKno</span>
+              <ChevronDown size={14} />
             </div>
-          )}
+            <button
+              className="canvas-new-chat-btn"
+              type="button"
+              onClick={startNewChat}
+              aria-label="New chat"
+              title="New chat"
+            >
+              <SquarePen size={18} />
+            </button>
+          </header>
+        )}
 
-          {messages.map((message) => (
-            <div key={message.id} className={`message ${message.role}`}>
-              <div className="bubble">
-                {message.role === 'assistant' ? renderAssistantText(message.text, message) : message.text}
-                {message.role === 'assistant' && message.streaming && <span className="typing-cursor" aria-hidden="true" />}
-              </div>
+        {appView === 'data' && (
+          <div className="embedded-data-center">
+            <DataPage onToast={onToast} />
+          </div>
+        )}
 
-              {message.role === 'assistant' && Array.isArray(message.sources) && message.sources.length > 0 && (
-                <div
-                  className="message-sources"
-                  onMouseEnter={() => setHoveredSourceMessage(message.id)}
-                  onMouseLeave={() => setHoveredSourceMessage(null)}
-                >
-                  <button
-                    type="button"
-                    className={`source-trigger ${expandedSourceMessages.has(message.id) ? 'open' : ''}`}
-                    onClick={() => toggleMessageSources(message.id)}
-                  >
-                    source
-                  </button>
+        {appView === 'apps' && (
+          <div className="connect-apps-view">
+            <span className="view-kicker">Connect Apps</span>
+            <h1>Bring more context into RagKno.</h1>
+            <p>Google Drive is available now. Slack, Notion, GitHub, and Gmail connectors can be added here as the product grows.</p>
+            <button className="btn-primary-solid" type="button" onClick={() => navigate('/chat/data')}>
+              Open Data Center
+            </button>
+          </div>
+        )}
 
-                  {hoveredSourceMessage === message.id && !expandedSourceMessages.has(message.id) && (
-                    <div className="source-hover-preview">
-                      {message.sources.slice(0, 3).map((source, sourceIndex) => {
-                        const index = Number(source.index || sourceIndex + 1)
-                        const fullText = String(source.text || '')
-                        const previewText = String(source.preview || fullText.slice(0, 120))
-                        return (
-                          <p key={`${message.id}-preview-${index}`}>
-                            <strong>[{index}]</strong> {previewText}
-                          </p>
-                        )
-                      })}
-                    </div>
-                  )}
-
-                  {expandedSourceMessages.has(message.id) && (
-                    <div className="source-cards">
-                      {message.sources.map((source, sourceIndex) => {
-                        const index = Number(source.index || sourceIndex + 1)
-                        const highlighted = hoveredCitation?.messageId === message.id
-                          && Number(hoveredCitation.sourceIndex) === index
-                        const fullText = String(source.text || '')
-
-                        return (
-                          <article key={`${message.id}-${index}`} className={`source-card ${highlighted ? 'highlighted' : ''}`}>
-                            <header>
-                              <span className="source-index">[{index}]</span>
-                              {source.link ? (
-                                <a href={source.link} target="_blank" rel="noreferrer">{source.title || source.source}</a>
-                              ) : (
-                                <strong>{source.title || source.source}</strong>
-                              )}
-                            </header>
-                            <p>{fullText}</p>
-                            <div className="source-meta-row">
-                              <small>Relevance: {Number(source.score || 0).toFixed(3)}</small>
-                            </div>
-                          </article>
-                        )
-                      })}
-                    </div>
-                  )}
+        {appView === 'chat' && (
+          <>
+            <div className="message-stack">
+              {!messages.length && !loading && (
+                <div className="chat-empty-state">
+                  <h1>How can I help, {firstName}?</h1>
                 </div>
               )}
 
-              <span>{message.role === 'user' ? 'User' : 'RAGKNO AI'} • {message.ts}</span>
+              {messages.map((message) => (
+                <div key={message.id} className={`message ${message.role}`}>
+                  <div className="bubble">
+                    {message.role === 'assistant' ? renderAssistantText(message.text, message) : message.text}
+                    {message.action?.to && (
+                      <Link className="message-action-link" to={message.action.to}>
+                        {message.action.label || 'Open'}
+                      </Link>
+                    )}
+                    {message.role === 'assistant' && message.streaming && <span className="typing-cursor" aria-hidden="true" />}
+                  </div>
+
+                  {message.role === 'assistant' && Array.isArray(message.sources) && message.sources.length > 0 && (
+                    <div
+                      className="message-sources"
+                      onMouseEnter={() => setHoveredSourceMessage(message.id)}
+                      onMouseLeave={() => setHoveredSourceMessage(null)}
+                    >
+                      <button
+                        type="button"
+                        className={`source-trigger ${expandedSourceMessages.has(message.id) ? 'open' : ''}`}
+                        onClick={() => toggleMessageSources(message.id)}
+                      >
+                        source
+                      </button>
+
+                      {hoveredSourceMessage === message.id && !expandedSourceMessages.has(message.id) && (
+                        <div className="source-hover-preview">
+                          {message.sources.slice(0, 3).map((source, sourceIndex) => {
+                            const index = Number(source.index || sourceIndex + 1)
+                            const fullText = String(source.text || '')
+                            const previewText = String(source.preview || fullText.slice(0, 120))
+                            return (
+                              <p key={`${message.id}-preview-${index}`}>
+                                <strong>[{index}]</strong> {previewText}
+                              </p>
+                            )
+                          })}
+                        </div>
+                      )}
+
+                      {expandedSourceMessages.has(message.id) && (
+                        <div className="source-cards">
+                          {message.sources.map((source, sourceIndex) => {
+                            const index = Number(source.index || sourceIndex + 1)
+                            const highlighted = hoveredCitation?.messageId === message.id
+                              && Number(hoveredCitation.sourceIndex) === index
+                            const fullText = String(source.text || '')
+
+                            return (
+                              <article key={`${message.id}-${index}`} className={`source-card ${highlighted ? 'highlighted' : ''}`}>
+                                <header>
+                                  <span className="source-index">[{index}]</span>
+                                  {source.link ? (
+                                    <a href={source.link} target="_blank" rel="noreferrer">{source.title || source.source}</a>
+                                  ) : (
+                                    <strong>{source.title || source.source}</strong>
+                                  )}
+                                </header>
+                                <p>{fullText}</p>
+                                <div className="source-meta-row">
+                                  <small>Relevance: {Number(source.score || 0).toFixed(3)}</small>
+                                </div>
+                              </article>
+                            )
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  <span>{message.role === 'user' ? 'User' : 'RAGKNO AI'} • {message.ts}</span>
+                </div>
+              ))}
+
+              {error && <p className="notice">{error}</p>}
+              <div ref={bottomRef} />
             </div>
-          ))}
 
-          {error && <p className="notice">{error}</p>}
-          <div ref={bottomRef} />
-        </div>
+            <div className="chat-composer-container">
+              <form className="chat-input-row" onSubmit={sendMessage}>
+                <button
+                  type="button"
+                  className="prompt-tool-btn"
+                  aria-label="Add source"
+                  onClick={() => setSourceModalOpen(true)}
+                  title="Add documents or links"
+                >
+                  <Plus size={19} />
+                </button>
+                <input
+                  value={input}
+                  onChange={(event) => setInput(event.target.value)}
+                  placeholder={t('askAnything') || 'Ask anything...'}
+                />
+                <div className="chat-input-right-tools">
+                  <div className="source-dropdown">
+                    <button
+                      type="button"
+                      className="source-dropdown-btn"
+                      onClick={() => {
+                        setSourceMenuOpen((prev) => !prev)
+                        if (!sourceMenuOpen) void refreshIndexedSources()
+                      }}
+                      title="Sources selector"
+                    >
+                      <Database size={13} />
+                      <span>{t('sources') || 'Sources'}</span>
+                      <span className="source-count-badge">{indexedSources.length}</span>
+                      <ChevronDown size={12} />
+                    </button>
+                    {sourceMenuOpen && (
+                      <div className="source-dropdown-menu">
+                        <div className="source-dropdown-head">
+                          <strong>Indexed sources</strong>
+                          <button type="button" onClick={refreshIndexedSources} disabled={sourcesLoading}>
+                            <RefreshCw size={13} className={sourcesLoading ? 'spin' : ''} />
+                          </button>
+                        </div>
+                        {indexedSources.length === 0 && (
+                          <p className="source-empty">No sources indexed yet.</p>
+                        )}
+                        {indexedSources.map((source) => (
+                          <label key={source.key} className="source-option">
+                            <input
+                              type="checkbox"
+                              checked={selectedSourceKeys.has(source.key)}
+                              onChange={() => toggleSourceSelection(source.key)}
+                            />
+                            <span>
+                              <strong>{source.source}</strong>
+                              <small>{source.type}</small>
+                            </span>
+                          </label>
+                        ))}
+                        <div className="source-dropdown-actions">
+                          <button type="button" onClick={() => navigate('/chat/data')}>Data Center</button>
+                          <button type="button" onClick={unindexSelectedSources} disabled={selectedSourceKeys.size === 0}>
+                            <Trash2 size={13} /> Unindex
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
 
-        <form className="chat-input-row" onSubmit={sendMessage}>
-          <input
-            value={input}
-            onChange={(event) => setInput(event.target.value)}
-            placeholder="Ask anything..."
-          />
-          <button type="submit" className="send-btn" disabled={!input.trim() || loading}>
-            <Send size={16} />
-          </button>
-        </form>
-        <p className="chat-disclaimer">RAGKNO AI can make mistakes. Verify critical information.</p>
+                  <button
+                    type="submit"
+                    className="send-btn"
+                    disabled={!input.trim() || loading}
+                    title="Send message"
+                  >
+                    <ArrowUp size={16} strokeWidth={2.5} />
+                  </button>
+                </div>
+              </form>
+
+              <p className="chat-disclaimer">{t('disclaimer') || 'RagKno can make mistakes. Verify critical information.'}</p>
+            </div>
+          </>
+        )}
       </section>
+
+      {sourceModalOpen && (
+        <div className="source-modal-backdrop" role="presentation" onMouseDown={() => setSourceModalOpen(false)}>
+          <div className="source-modal" role="dialog" aria-modal="true" aria-label="Add source" onMouseDown={(event) => event.stopPropagation()}>
+            <header>
+              <div>
+                <span className="view-kicker">Add Source</span>
+                <h2>Index new data without leaving chat.</h2>
+              </div>
+              <button type="button" onClick={() => setSourceModalOpen(false)} aria-label="Close add source">
+                <X size={18} />
+              </button>
+            </header>
+
+            <div className="source-modal-grid">
+              <button className="source-modal-card" type="button" onClick={() => quickFileInputRef.current?.click()}>
+                <Upload size={24} />
+                <strong>{quickUploading ? 'Uploading...' : 'Upload files'}</strong>
+                <span>PDF, DOCX, and TXT documents.</span>
+              </button>
+              <button className="source-modal-card" type="button" onClick={() => navigate('/chat/data')}>
+                <Cloud size={24} />
+                <strong>Connect Drive</strong>
+                <span>Open Data Center for Google Drive sync.</span>
+              </button>
+            </div>
+
+            <div className="source-url-row">
+              <input
+                type="url"
+                value={quickUrl}
+                onChange={(event) => setQuickUrl(event.target.value)}
+                placeholder="https://example.com/docs"
+              />
+              <button type="button" onClick={quickAddUrl} disabled={!quickUrl.trim() || quickAddingUrl}>
+                {quickAddingUrl ? 'Adding...' : 'Add URL'}
+              </button>
+            </div>
+
+            <input
+              ref={quickFileInputRef}
+              type="file"
+              accept=".pdf,.docx,.txt"
+              multiple
+              hidden
+              onChange={(event) => {
+                void quickUploadFiles(event.target.files)
+                event.target.value = ''
+              }}
+            />
+          </div>
+        </div>
+      )}
+
+      <ChatGPTSettingsModal
+        isOpen={chatgptModalOpen}
+        onClose={() => setChatgptModalOpen(false)}
+        initialTab={chatgptModalTab}
+        user={user}
+        onClearHistory={() => {
+          setThreads([])
+          setActiveThreadId(null)
+          try {
+            localStorage.removeItem(CHAT_THREADS_KEY)
+            localStorage.removeItem(ACTIVE_THREAD_KEY)
+          } catch {}
+          onToast?.({ type: 'info', message: t('historyCleared') || 'Chat history cleared.' })
+        }}
+      />
+
+      <FeedbackModal
+        isOpen={feedbackModalOpen}
+        onClose={() => setFeedbackModalOpen(false)}
+        onSubmitFeedback={async (feedbackData) => {
+          try {
+            await submitFeedback({
+              rating: feedbackData.rating,
+              comment: feedbackData.comment,
+              user_id: user?.id,
+              user_email: user?.email,
+            })
+            onToast?.({ type: 'success', message: 'Thank you for your feedback!' })
+          } catch (err) {
+            onToast?.({ type: 'error', message: 'Failed to submit feedback. Please try again.' })
+          }
+        }}
+      />
     </section>
   )
 }
@@ -1356,6 +1877,35 @@ function ScrollToTop() {
   return null
 }
 
+function LenisScrollController() {
+  const { pathname } = useLocation()
+
+  useEffect(() => {
+    if (pathname.startsWith('/chat')) {
+      return undefined
+    }
+
+    const lenis = new Lenis({
+      duration: 1.05,
+      easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
+      smoothWheel: true,
+    })
+
+    function raf(time) {
+      lenis.raf(time)
+      window.requestAnimationFrame(raf)
+    }
+
+    const frame = window.requestAnimationFrame(raf)
+    return () => {
+      window.cancelAnimationFrame(frame)
+      lenis.destroy()
+    }
+  }, [pathname])
+
+  return null
+}
+
 function HandleOAuthRedirect() {
   const location = useLocation()
   const navigate = useNavigate()
@@ -1363,33 +1913,62 @@ function HandleOAuthRedirect() {
   useEffect(() => {
     const params = new URLSearchParams(location.search)
     if (params.get('drive') === 'connected') {
-      navigate('/data?connected=1', { replace: true })
+      navigate('/chat/data?connected=1', { replace: true })
     }
   }, [location.search, navigate])
 
   return null
 }
 
+function ProtectedRoute({ user, checkingAuth, children }) {
+  const location = useLocation()
+  if (checkingAuth) {
+    return (
+      <div className="auth-loading">
+        <span>Loading RagKno...</span>
+      </div>
+    )
+  }
+  if (!user) {
+    return <Navigate to="/login" replace state={{ from: location.pathname }} />
+  }
+  return children
+}
+
 export default function App() {
-  const THEME_KEY = 'ragkno_theme_mode_v1'
   const [toasts, setToasts] = useState([])
-  const [darkMode, setDarkMode] = useState(() => {
-    try {
-      const saved = window.localStorage.getItem(THEME_KEY)
-      if (saved === 'dark') return true
-      if (saved === 'light') return false
-      return window.matchMedia?.('(prefers-color-scheme: dark)').matches ?? false
-    } catch {
-      return false
-    }
-  })
+  const [user, setUser] = useState(null)
+  const [checkingAuth, setCheckingAuth] = useState(true)
 
   useEffect(() => {
     const root = document.documentElement
-    root.classList.toggle('dark', darkMode)
-    root.style.colorScheme = darkMode ? 'dark' : 'light'
-    window.localStorage.setItem(THEME_KEY, darkMode ? 'dark' : 'light')
-  }, [darkMode])
+    root.classList.remove('dark')
+    root.style.colorScheme = 'light'
+  }, [])
+
+  useEffect(() => {
+    let ignore = false
+    async function loadUser() {
+      try {
+        const result = await getCurrentUser()
+        if (!ignore) {
+          setUser(result.authenticated ? result.user : null)
+        }
+      } catch {
+        if (!ignore) {
+          setUser(null)
+        }
+      } finally {
+        if (!ignore) {
+          setCheckingAuth(false)
+        }
+      }
+    }
+    void loadUser()
+    return () => {
+      ignore = true
+    }
+  }, [])
 
   const pushToast = useCallback((toast) => {
     if (!toast?.message) {
@@ -1422,18 +2001,28 @@ export default function App() {
 
   return (
     <BrowserRouter>
+      <LenisScrollController />
       <ScrollToTop />
       <HandleOAuthRedirect />
       <AppShell
         toasts={toasts}
         onDismissToast={dismissToast}
-        darkMode={darkMode}
-        onDarkModeChange={setDarkMode}
       >
         <Routes>
           <Route path="/" element={<HomePage />} />
-          <Route path="/data" element={<DataPage onToast={pushToast} />} />
-          <Route path="/chat" element={<ChatPage onToast={pushToast} />} />
+          <Route
+            path="/login"
+            element={user ? <Navigate to="/chat" replace /> : <LoginPage onUserChange={setUser} onToast={pushToast} />}
+          />
+          <Route path="/data" element={<Navigate to="/chat/data" replace />} />
+          <Route
+            path="/chat/*"
+            element={(
+              <ProtectedRoute user={user} checkingAuth={checkingAuth}>
+                <ChatPage user={user} onUserChange={setUser} onToast={pushToast} />
+              </ProtectedRoute>
+            )}
+          />
         </Routes>
       </AppShell>
     </BrowserRouter>

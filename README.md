@@ -67,10 +67,16 @@ data/                  Local data and runtime artifacts
 Create a `.env` file in the repository root:
 
 ```env
-# Required for LLM responses
-GOOGLE_API_KEY=your_google_api_key
+# AgentRouter (Primary LLM Provider)
+AGENTROUTER_API_KEY=your_agentrouter_api_key
+AGENTROUTER_BASE_URL=https://agentrouter.org/v1
+AGENTROUTER_MODEL=gpt-5.6-sol
 
-# Optional: override default model
+# Fallback models available on AgentRouter:
+# claude-opus-4-8, claude-opus-5, deepseek-v4-flash, gpt-6-astra
+
+# Alternative: Google GenAI (used if AGENTROUTER_API_KEY is not set)
+GOOGLE_API_KEY=your_google_api_key
 GOOGLE_LLM_MODEL=gemma-3-12b-it
 
 # Optional: Drive OAuth support

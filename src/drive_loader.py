@@ -24,9 +24,19 @@ from langchain_core.documents import Document
 _PROJECT_ROOT = Path(__file__).parent.parent
 load_dotenv(_PROJECT_ROOT / ".env")
 
+# Allow OAuth over HTTP on localhost during development
+os.environ.setdefault("OAUTHLIB_INSECURE_TRANSPORT", "1")
+# Allow Google to return all previously granted user scopes without ScopeChangedError
+os.environ.setdefault("OAUTHLIB_RELAX_TOKEN_SCOPE", "1")
+
 # ----- Config ----------------------------------------------------------------
 
-SCOPES = ["https://www.googleapis.com/auth/drive.readonly"]
+SCOPES = [
+    "openid",
+    "https://www.googleapis.com/auth/userinfo.email",
+    "https://www.googleapis.com/auth/userinfo.profile",
+    "https://www.googleapis.com/auth/drive.readonly",
+]
 
 TOKEN_PATH = Path(__file__).parent.parent / "token.json"
 
@@ -37,20 +47,63 @@ SUPPORTED_MIME_TYPES = {
     "application/vnd.google-apps.document": "gdoc",
 }
 
-# In-memory cache for OAuth PKCE verifier keyed by OAuth state.
-# This is sufficient for local dev in a single backend process.
-_OAUTH_CODE_VERIFIERS: dict[str, tuple[str, float]] = {}
-_OAUTH_VERIFIER_TTL_SECONDS = 600
+# Persistent cache for OAuth PKCE verifier keyed by OAuth state.
+_VERIFIERS_FILE = _PROJECT_ROOT / "data" / "oauth_verifiers.json"
+_OAUTH_CODE_VERIFIERS: dict[str, tuple[str, float, str | None]] = {}
+_OAUTH_VERIFIER_TTL_SECONDS = 1800
 
 
-def _cleanup_oauth_cache() -> None:
+def save_oauth_verifier(state: str, verifier: str, user_id: str | None = None) -> None:
     now = time.time()
-    expired_states = [
-        state for state, (_, ts) in _OAUTH_CODE_VERIFIERS.items()
-        if now - ts > _OAUTH_VERIFIER_TTL_SECONDS
-    ]
-    for state in expired_states:
-        _OAUTH_CODE_VERIFIERS.pop(state, None)
+    _OAUTH_CODE_VERIFIERS[state] = (verifier, now, user_id)
+    try:
+        _VERIFIERS_FILE.parent.mkdir(parents=True, exist_ok=True)
+        data = {}
+        if _VERIFIERS_FILE.exists():
+            try:
+                data = json.loads(_VERIFIERS_FILE.read_text())
+            except Exception:
+                data = {}
+        data[state] = [verifier, now, user_id]
+        _VERIFIERS_FILE.write_text(json.dumps(data))
+    except Exception as e:
+        print(f"[WARN] Failed to write OAuth verifier to disk: {e}")
+
+
+def pop_oauth_verifier_with_user(state: str) -> tuple[str | None, str | None]:
+    now = time.time()
+    verifier = None
+    user_id = None
+    if state in _OAUTH_CODE_VERIFIERS:
+        entry = _OAUTH_CODE_VERIFIERS.pop(state)
+        verifier = entry[0]
+        user_id = entry[2] if len(entry) > 2 else None
+
+    try:
+        if _VERIFIERS_FILE.exists():
+            data = json.loads(_VERIFIERS_FILE.read_text())
+            if state in data:
+                entry = data.pop(state)
+                verifier = verifier or entry[0]
+                if not user_id and len(entry) > 2:
+                    user_id = entry[2]
+            # Clean up old entries
+            data = {k: v for k, v in data.items() if now - v[1] <= _OAUTH_VERIFIER_TTL_SECONDS}
+            _VERIFIERS_FILE.write_text(json.dumps(data))
+    except Exception as e:
+        print(f"[WARN] Failed to read/pop OAuth verifier from disk: {e}")
+
+    return verifier, user_id
+
+
+def pop_oauth_verifier(state: str) -> str | None:
+    verifier, _ = pop_oauth_verifier_with_user(state)
+    return verifier
+
+
+_save_verifier = save_oauth_verifier
+_pop_verifier = pop_oauth_verifier
+
 
 # ----- OAuth Helpers ---------------------------------------------------------
 
@@ -73,9 +126,8 @@ def _build_flow() -> Flow:
     return flow
 
 
-def get_auth_url() -> str:
-    """Return the Google OAuth consent URL and cache PKCE verifier."""
-    _cleanup_oauth_cache()
+def get_auth_url(user_id: str | None = None) -> str:
+    """Return the Google OAuth consent URL and cache PKCE verifier linked to user_id."""
     flow = _build_flow()
     auth_url, state = flow.authorization_url(
         access_type="offline",
@@ -86,28 +138,36 @@ def get_auth_url() -> str:
     # google-auth-oauthlib stores this after authorization_url() call.
     if not flow.code_verifier:
         raise RuntimeError("Failed to initialize OAuth code verifier.")
-    _OAUTH_CODE_VERIFIERS[state] = (flow.code_verifier, time.time())
+    save_oauth_verifier(state, flow.code_verifier, user_id=user_id)
 
     return auth_url
 
 
-def exchange_code(code: str, state: str | None = None) -> Credentials:
-    """Exchange an auth code for credentials and persist token.json."""
-    _cleanup_oauth_cache()
+def exchange_code(code: str, state: str | None = None, user_id: str | None = None) -> Credentials:
+    """Exchange an auth code for credentials and persist in Supabase for user_id."""
     flow = _build_flow()
 
+    resolved_user_id = user_id
     if state:
-        verifier_entry = _OAUTH_CODE_VERIFIERS.pop(state, None)
-        if verifier_entry:
-            flow.code_verifier = verifier_entry[0]
+        code_verifier, stored_uid = pop_oauth_verifier_with_user(state)
+        if code_verifier:
+            flow.code_verifier = code_verifier
+        if not resolved_user_id and stored_uid:
+            resolved_user_id = stored_uid
 
     flow.fetch_token(code=code)
     creds = flow.credentials
-    _save_token(creds)
+
+    if resolved_user_id:
+        _save_user_token(resolved_user_id, creds)
+    else:
+        print("[WARN] exchange_code called without resolved user_id; token not persisted to DB")
+
     return creds
 
 
-def _save_token(creds: Credentials):
+def _save_user_token(user_id: str, creds: Credentials) -> None:
+    from src.database import Database
     token_data = {
         "token": creds.token,
         "refresh_token": creds.refresh_token,
@@ -115,16 +175,25 @@ def _save_token(creds: Credentials):
         "client_id": creds.client_id,
         "client_secret": creds.client_secret,
         "scopes": list(creds.scopes) if creds.scopes else SCOPES,
+        "expiry_ts": creds.expiry.timestamp() if getattr(creds, "expiry", None) else None,
     }
-    TOKEN_PATH.write_text(json.dumps(token_data))
-    print(f"[INFO] Token saved to {TOKEN_PATH}")
+    db = Database.get_instance()
+    db.save_user_drive_token(user_id, token_data)
+    print(f"[INFO] Drive token saved to Supabase for user {user_id}")
 
 
-def load_credentials() -> Credentials | None:
-    """Load and (if needed) refresh credentials from token.json."""
-    if not TOKEN_PATH.exists():
+def load_credentials(user_id: str | None = None) -> Credentials | None:
+    """Load and (if needed) refresh credentials for a specific user from Supabase."""
+    uid = str(user_id or "").strip()
+    if not uid:
         return None
-    raw = json.loads(TOKEN_PATH.read_text())
+
+    from src.database import Database
+    db = Database.get_instance()
+    raw = db.get_user_drive_token(uid)
+    if not raw or not raw.get("token"):
+        return None
+
     creds = Credentials(
         token=raw["token"],
         refresh_token=raw.get("refresh_token"),
@@ -133,21 +202,37 @@ def load_credentials() -> Credentials | None:
         client_secret=raw["client_secret"],
         scopes=raw.get("scopes", SCOPES),
     )
+
     if creds.expired and creds.refresh_token:
-        creds.refresh(Request())
-        _save_token(creds)
-        print("[INFO] Token refreshed.")
+        try:
+            creds.refresh(Request())
+            _save_user_token(uid, creds)
+            print(f"[INFO] Drive token refreshed for user {uid}")
+        except Exception as e:
+            print(f"[WARN] Failed to refresh Drive token for user {uid}: {e}")
+
     return creds
 
 
-def is_connected() -> bool:
-    return TOKEN_PATH.exists()
+def is_connected(user_id: str | None = None) -> bool:
+    uid = str(user_id or "").strip()
+    if not uid:
+        return False
+    from src.database import Database
+    db = Database.get_instance()
+    raw = db.get_user_drive_token(uid)
+    return bool(raw and raw.get("token"))
 
 
-def disconnect():
-    if TOKEN_PATH.exists():
-        TOKEN_PATH.unlink()
-        print("[INFO] token.json deleted — disconnected from Drive.")
+def disconnect(user_id: str | None = None) -> bool:
+    uid = str(user_id or "").strip()
+    if not uid:
+        return False
+    from src.database import Database
+    db = Database.get_instance()
+    ok = db.delete_user_drive_token(uid)
+    print(f"[INFO] Drive token deleted from Supabase for user {uid}: {ok}")
+    return ok
 
 
 # ----- Drive API helpers -----------------------------------------------------

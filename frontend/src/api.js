@@ -1,6 +1,7 @@
 // src/api.js — all backend calls go through here
 
-const BASE = ''   // dev proxy via vite.config.js forwards to :8000
+export const API_BASE = (import.meta.env.VITE_API_URL || '').replace(/\/+$/, '')
+const BASE = API_BASE
 
 const DEFAULT_RETRIES = 2
 const DEFAULT_RETRY_DELAY_MS = 350
@@ -53,6 +54,27 @@ export async function getAuthUrl() {
   const res = await fetchWithRetry(`${BASE}/auth/url`)
   if (!res.ok) throw new Error('Failed to get auth URL')
   return res.json()   // { url: string }
+}
+
+export async function getGoogleLoginUrl() {
+  const res = await fetchWithRetry(`${BASE}/app-auth/google/url`)
+  if (!res.ok) throw new Error('Failed to get login URL')
+  return res.json()   // { url: string }
+}
+
+export async function getCurrentUser() {
+  const res = await fetchWithRetry(`${BASE}/auth/me`, { credentials: 'include' }, { retries: 0 })
+  if (!res.ok) throw new Error('Failed to check login status')
+  return res.json()   // { authenticated, user }
+}
+
+export async function logoutUser() {
+  const res = await fetchWithRetry(`${BASE}/auth/logout`, {
+    method: 'POST',
+    credentials: 'include',
+  })
+  if (!res.ok) throw new Error('Logout failed')
+  return res.json()
 }
 
 export async function getAuthStatus() {
@@ -243,6 +265,42 @@ export async function resetChatMemory(sessionId) {
   })
   if (!res.ok) {
     throw new Error(await parseError(res, 'Failed to reset chat memory'))
+  }
+  return res.json()
+}
+
+export async function deleteBackendThread(threadId) {
+  const res = await fetchWithRetry(`${BASE}/threads/${encodeURIComponent(threadId)}`, {
+    method: 'DELETE',
+  })
+  if (!res.ok) {
+    throw new Error(await parseError(res, 'Failed to delete thread'))
+  }
+  return res.json()
+}
+
+export async function submitFeedback({ rating, comment, feedback, user_id, user_email }) {
+  const payload = {
+    rating: rating || 'neutral',
+    feedback: comment || feedback || '',
+    user_id: user_id || null,
+    user_email: user_email || null,
+  }
+  const res = await fetchWithRetry(`${BASE}/feedback`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+  if (!res.ok) {
+    throw new Error(await parseError(res, 'Failed to submit feedback'))
+  }
+  return res.json()
+}
+
+export async function fetchFeedbacks(limit = 50) {
+  const res = await fetchWithRetry(`${BASE}/feedback?limit=${limit}`)
+  if (!res.ok) {
+    throw new Error(await parseError(res, 'Failed to fetch feedback'))
   }
   return res.json()
 }

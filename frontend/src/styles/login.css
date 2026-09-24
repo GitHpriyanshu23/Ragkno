@@ -1,0 +1,230 @@
+.login-page {
+  width: 100%;
+  min-height: 100vh;
+  margin: 0;
+  padding: 14px;
+  display: grid;
+  grid-template-columns: minmax(360px, 520px) minmax(0,1.28fr);
+  gap: 14px;
+  background: #ffffff;
+  position: relative;
+  overflow: hidden;
+}
+
+.login-panel {
+  min-height: calc(100vh - 28px);
+  padding: clamp(28px, 4vw, 58px);
+  display: flex;
+  flex-direction: column;
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.58);
+  border-radius: 22px;
+  box-shadow: 0 28px 90px rgba(255, 255, 255, 0.26);
+  backdrop-filter: blur(18px) saturate(120%);
+  z-index: 3;
+}
+
+.login-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: #111;
+  font-family: 'Archivo', sans-serif;
+  font-size: 1.25rem;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  text-transform: uppercase;
+}
+
+.login-brand img {
+  width: 28px;
+  height: 28px;
+  padding: 5px;
+  border: 2px solid currentColor;
+  border-radius: 6px;
+  filter: brightness(0);
+}
+
+.login-copy {
+  width: min(100%, 520px);
+  margin: auto;
+  display: grid;
+  gap: 18px;
+}
+
+.login-copy > p:first-child {
+  margin: 0 0 70px;
+  justify-self: end;
+  color: #1f1f1f;
+  font-weight: 600;
+}
+
+.login-copy h1 {
+  margin: 0 0 18px;
+  color: #111;
+  font-size: clamp(2.3rem, 4vw, 3rem);
+  font-weight: 500;
+  letter-spacing: -0.04em;
+}
+
+.login-google-btn {
+  min-height: 68px;
+  border: 1px solid #dedede;
+  border-radius: 12px;
+  background: #fff;
+  color: #242424;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  font-size: 1.05rem;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.03);
+}
+
+.login-google-btn:hover {
+  border-color: #cfcfcf;
+  background: #fafafa;
+}
+
+.login-google-btn:disabled {
+  opacity: 0.7;
+  cursor: wait;
+}
+
+.google-mark {
+  width: 22px;
+  height: 22px;
+  object-fit: contain;
+  display: block;
+}
+
+.login-terms {
+  margin: 8px 0 0;
+  color: #6b6b6b;
+  font-size: 0.88rem;
+  line-height: 1.55;
+}
+
+.login-footer {
+  margin-top: auto;
+  display: flex;
+  align-items: center;
+  gap: 28px;
+  color: #737373;
+  font-size: 0.82rem;
+}
+
+.login-footer span:first-child {
+  margin-right: auto;
+}
+
+.login-visual {
+  position: relative;
+  grid-column: 1 / -1;
+  grid-row: 1;
+  min-height: calc(100vh - clamp(32px, 4vw, 56px));
+  border-radius: 24px;
+  overflow: hidden;
+  background: #0f713c;
+  isolation: isolate;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.18), 0 28px 90px rgba(0, 0, 0, 0.24);
+}
+
+.login-panel {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.login-visual {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+.login-visual img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform: scale(1.02);
+}
+
+.login-visual::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(0, 0, 0, 0.08)),
+    radial-gradient(circle at 75% 20%, rgba(255, 255, 255, 0.24), transparent 30%);
+  z-index: 1;
+}
+
+.pixel-mask {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  opacity: 0.2;
+  background-image:
+    linear-gradient(90deg, rgba(255, 255, 255, 0.38) 1px, transparent 1px),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.28) 1px, transparent 1px);
+  background-size: 34px 34px;
+  mask-image:
+    radial-gradient(circle at var(--px, 20%) var(--py, 30%), #000 0 7%, transparent 18%),
+    radial-gradient(circle at calc(100% - var(--px, 20%)) calc(100% - var(--py, 30%)), #000 0 5%, transparent 15%);
+  animation: pixel-mask-drift 7s ease-in-out infinite alternate;
+}
+
+@keyframes pixel-mask-drift {
+  0% {
+    --px: 16%;
+    --py: 22%;
+    background-position: 0 0;
+  }
+
+  100% {
+    --px: 72%;
+    --py: 58%;
+    background-position: 34px 18px;
+  }
+}
+
+@media (max-width: 980px) {
+  .login-page {
+    grid-template-columns: 1fr;
+  }
+
+  .login-visual {
+    min-height: 360px;
+    order: -1;
+  }
+
+  .login-panel {
+    min-height: auto;
+  }
+}
+
+@media (max-width: 560px) {
+  .login-page {
+    padding: 0;
+    gap: 0;
+  }
+
+  .login-panel {
+    padding: 24px 18px 28px;
+  }
+
+  .login-copy > p:first-child {
+    margin-bottom: 34px;
+    justify-self: start;
+  }
+
+  .login-footer {
+    flex-wrap: wrap;
+  }
+
+  .login-copy h1 {
+    white-space: normal;
+  }
+}
