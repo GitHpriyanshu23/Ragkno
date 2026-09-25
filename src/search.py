@@ -40,7 +40,19 @@ class RAGSearch:
         self.agentrouter_base_url = os.getenv("AGENTROUTER_BASE_URL", "https://agentrouter.org/v1")
         self.google_api_key = os.getenv("GOOGLE_API_KEY")
 
-        if self.agentrouter_api_key:
+        provider_pref = (os.getenv("LLM_PROVIDER") or "").strip().lower()
+        if (provider_pref == "google" or not self.agentrouter_api_key) and self.google_api_key:
+            self.provider = "google"
+            self.llm_model = os.getenv("GOOGLE_LLM_MODEL", "gemini-2.5-flash")
+            self.FALLBACK_MODELS = [
+                "gemini-2.5-flash",
+                "gemini-1.5-flash",
+                "gemini-1.5-pro",
+                "gemini-2.0-flash",
+            ]
+            self.llm = ChatGoogleGenerativeAI(google_api_key=self.google_api_key, model=self.llm_model)
+            print(f"[INFO] Google LLM initialized: {self.llm_model}")
+        elif self.agentrouter_api_key:
             self.provider = "agentrouter"
             self.llm_model = os.getenv("AGENTROUTER_MODEL", llm_model)
             self.agentrouter_headers = {
@@ -55,17 +67,6 @@ class RAGSearch:
                 default_headers=self.agentrouter_headers,
             )
             print(f"[INFO] AgentRouter LLM initialized: {self.llm_model} at {self.agentrouter_base_url}")
-        elif self.google_api_key:
-            self.provider = "google"
-            self.llm_model = os.getenv("GOOGLE_LLM_MODEL", "gemma-3-4b-it")
-            self.FALLBACK_MODELS = [
-                "gemma-3-1b-it",
-                "gemma-3-4b-it",
-                "gemma-3-12b-it",
-                "gemma-3-27b-it",
-            ]
-            self.llm = ChatGoogleGenerativeAI(google_api_key=self.google_api_key, model=self.llm_model)
-            print(f"[INFO] Google LLM initialized: {self.llm_model}")
         else:
             raise ValueError(
                 "Neither AGENTROUTER_API_KEY nor GOOGLE_API_KEY is configured in your .env file."
@@ -584,7 +585,7 @@ class RAGSearch:
             "If context is insufficient, say what is missing briefly."
         )
 
-    def _retrieve_for_answer(self, query: str, top_k: int, memory_context: str | None = None) -> tuple[list[dict], str]:
+    def _retrieve_for_answer(self, query: str, top_k: int, memory_context: str | None = None, user_id: str | None = None, use_reranker: bool = True) -> tuple[list[dict], str]:
         query_terms = self._query_terms(query)
         strong_terms = [t for t in query_terms if len(t) >= 7]
         retrieval_hint = self._memory_retrieval_hint(memory_context)
@@ -595,12 +596,14 @@ class RAGSearch:
         dense_results = self.vectorstore.query(retrieval_query, top_k=candidate_k)
         sparse_results = self._bm25_retrieve(retrieval_query, top_k=candidate_k)
         fused_results = self._rrf_fuse(dense_results, sparse_results)
-        ranked = self._rank_results(retrieval_query, fused_results)
+        ranked = self._rank_results(retrieval_query, fused_results) if use_reranker else fused_results
         parent_expanded = self._expand_to_parent_context(ranked, top_k=top_k)
         return parent_expanded, retrieval_query
 
-    def answer_with_sources(self, query: str, top_k: int = 5, memory_context: str | None = None) -> dict:
-        ranked_results, _ = self._retrieve_for_answer(query, top_k, memory_context)
+    def answer_with_sources(self, query: str, top_k: int = 5, memory_context: str | None = None, user_id: str | None = None, model: str | None = None, use_reranker: bool = True, **kwargs) -> dict:
+        if model:
+            self._try_switch_model(model)
+        ranked_results, _ = self._retrieve_for_answer(query, top_k, memory_context, user_id=user_id, use_reranker=use_reranker)
         sources = self._build_source_payload(ranked_results)
         if not sources:
             return {"answer": "No relevant documents found.", "sources": []}
@@ -611,8 +614,10 @@ class RAGSearch:
         answer = str(response.content or "").strip() or "No relevant documents found."
         return {"answer": answer, "sources": sources}
 
-    def stream_answer_with_sources(self, query: str, top_k: int = 5, memory_context: str | None = None) -> tuple[list[dict], Iterator[str]]:
-        ranked_results, _ = self._retrieve_for_answer(query, top_k, memory_context)
+    def stream_answer_with_sources(self, query: str, top_k: int = 5, memory_context: str | None = None, user_id: str | None = None, model: str | None = None, use_reranker: bool = True, **kwargs) -> tuple[list[dict], Iterator[str]]:
+        if model:
+            self._try_switch_model(model)
+        ranked_results, _ = self._retrieve_for_answer(query, top_k, memory_context, user_id=user_id, use_reranker=use_reranker)
         sources = self._build_source_payload(ranked_results)
         if not sources:
             return [], iter(["No relevant documents found."])

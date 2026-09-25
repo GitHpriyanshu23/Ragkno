@@ -280,9 +280,10 @@ export async function deleteBackendThread(threadId) {
 }
 
 export async function submitFeedback({ rating, comment, feedback, user_id, user_email }) {
+  const content = (feedback || comment || '').trim()
   const payload = {
-    rating: rating || 'neutral',
-    feedback: comment || feedback || '',
+    rating: (rating || 'neutral').trim() || 'neutral',
+    feedback: content,
     user_id: user_id || null,
     user_email: user_email || null,
   }

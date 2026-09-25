@@ -31,12 +31,6 @@ const NAV_TABS = [
   { id: 'about', label: 'About RagKno', icon: Info },
 ]
 
-export function applyTheme() {
-  try {
-    document.documentElement.classList.remove('dark')
-    document.documentElement.removeAttribute('data-theme')
-  } catch {}
-}
 
 export default function SettingsModal({
   isOpen,

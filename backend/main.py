@@ -33,6 +33,42 @@ os.environ.setdefault("OAUTHLIB_RELAX_TOKEN_SCOPE", "1")
 
 # Patch sys.path so we can import from `src/`
 import sys
+
+class _SafeStream:
+    def __init__(self, target):
+        self._target = target
+
+    def write(self, data):
+        try:
+            if self._target:
+                return self._target.write(data)
+        except (OSError, IOError):
+            return len(data) if data else 0
+
+    def flush(self):
+        try:
+            if self._target:
+                self._target.flush()
+        except (OSError, IOError):
+            pass
+
+    def isatty(self):
+        try:
+            return self._target.isatty() if self._target else False
+        except Exception:
+            return False
+
+    def fileno(self):
+        try:
+            return self._target.fileno()
+        except Exception:
+            raise OSError(5, "Input/output error")
+
+    def __getattr__(self, name):
+        return getattr(self._target, name)
+
+sys.stdout = _SafeStream(sys.stdout)
+sys.stderr = _SafeStream(sys.stderr)
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.drive_loader import (
@@ -383,15 +419,12 @@ def auth_callback(
     error: str | None = None,
     error_description: str | None = None,
 ):
-    # If Google sends an explicit OAuth error, return it directly for easier debugging.
+    # If Google sends an explicit OAuth error, redirect back to frontend with error param
     if error:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Google OAuth error: {error}. {error_description or ''}".strip(),
-        )
+        return RedirectResponse(url=f"{FRONTEND_URL}/chat/data?error={error}")
 
     if not code:
-        raise HTTPException(status_code=400, detail="Missing authorization code in callback.")
+        return RedirectResponse(url=f"{FRONTEND_URL}/chat/data?error=missing_code")
 
     user = _session_user_from_request(request)
     user_id = user["id"] if user else None
@@ -399,14 +432,8 @@ def auth_callback(
     try:
         exchange_code(code, state=state, user_id=user_id)
     except Exception as e:
-        redirect_uri = os.getenv("GOOGLE_REDIRECT_URI", "http://localhost:8000/auth/callback")
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                "Token exchange failed. Verify OAuth client settings, tester access, "
-                f"and redirect URI ({redirect_uri}). Raw error: {e}"
-            ),
-        )
+        print(f"[ERROR] Token exchange failed: {e}")
+        return RedirectResponse(url=f"{FRONTEND_URL}/chat/data?error=token_exchange_failed")
     # Redirect browser back to the React app with a success flag
     return RedirectResponse(url=f"{FRONTEND_URL}/chat/data?connected=1")
 
@@ -881,7 +908,7 @@ def handle_query_stream(req: QueryRequest, request: Request):
 
 
 class FeedbackRequest(BaseModel):
-    rating: str
+    rating: str | None = "neutral"
     feedback: str
 
 
@@ -889,9 +916,11 @@ class FeedbackRequest(BaseModel):
 def submit_feedback(payload: FeedbackRequest, request: Request):
     user = _session_user_from_request(request)
     user_id = user["id"] if user else None
-    if not payload.feedback.strip() or not payload.rating.strip():
-        raise HTTPException(status_code=400, detail="Rating and feedback cannot be empty.")
-    saved = _db.save_feedback(user_id=user_id, rating=payload.rating, feedback=payload.feedback)
+    feedback_text = (payload.feedback or "").strip()
+    rating = (payload.rating or "neutral").strip() or "neutral"
+    if not feedback_text:
+        raise HTTPException(status_code=400, detail="Feedback cannot be empty.")
+    saved = _db.save_feedback(user_id=user_id, rating=rating, feedback=feedback_text)
     return {"ok": True, "feedback": saved}
 
 
@@ -902,33 +931,6 @@ def list_feedbacks_route(request: Request, limit: int = 50):
     # Return all feedbacks so developer/admin can track user feedback
     feedbacks = _db.list_feedbacks(user_id=None, limit=min(limit, 100))
     return {"ok": True, "feedbacks": feedbacks}
-
-
-
-@app.get("/feedback", summary="List tracked feedback")
-def list_feedbacks_route(request: Request, limit: int = 50):
-    feedbacks = _db.list_feedbacks(user_id=None, limit=min(limit, 100))
-    return {"ok": True, "feedbacks": feedbacks}
-
-
-# ---------------------------------------------------------------------------
-# Feedback routes
-# ---------------------------------------------------------------------------
-
-
-class FeedbackRequest(BaseModel):
-    rating: str
-    feedback: str
-
-
-@app.post("/feedback", summary="Submit user feedback")
-def submit_feedback(payload: FeedbackRequest, request: Request):
-    user = _session_user_from_request(request)
-    user_id = user["id"] if user else None
-    if not payload.feedback.strip() or not payload.rating.strip():
-        raise HTTPException(status_code=400, detail="Rating and feedback cannot be empty.")
-    saved = _db.save_feedback(user_id=user_id, rating=payload.rating, feedback=payload.feedback)
-    return {"ok": True, "feedback": saved}
 
 
 # ---------------------------------------------------------------------------

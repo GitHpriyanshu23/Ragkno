@@ -479,6 +479,13 @@ function DataPage({ onToast }) {
     const params = new URLSearchParams(location.search)
     if (params.get('connected') === '1') {
       setNotice('Google Drive connected successfully.')
+    } else if (params.get('error')) {
+      const err = params.get('error')
+      if (err === 'access_denied') {
+        showError('Google Drive access was denied (access_denied). In Google Cloud Console, ensure your email is added under "OAuth Consent Screen" > "Test Users", and click "Advanced" > "Go to RagKno (unsafe)" on Google\'s consent prompt.')
+      } else {
+        showError(`Google Drive connection failed: ${err}`)
+      }
     }
   }, [location.search])
 
@@ -2017,14 +2024,15 @@ function ChatPage({ user, onUserChange, onToast }) {
         onSubmitFeedback={async (feedbackData) => {
           try {
             await submitFeedback({
-              rating: feedbackData.rating,
-              comment: feedbackData.comment,
+              rating: feedbackData?.rating || 'neutral',
+              feedback: feedbackData?.feedback || feedbackData?.comment || '',
+              comment: feedbackData?.comment || feedbackData?.feedback || '',
               user_id: user?.id,
               user_email: user?.email,
             })
             onToast?.({ type: 'success', message: 'Thank you for your feedback!' })
           } catch (err) {
-            onToast?.({ type: 'error', message: 'Failed to submit feedback. Please try again.' })
+            onToast?.({ type: 'error', message: err?.message || 'Failed to submit feedback. Please try again.' })
           }
         }}
       />
