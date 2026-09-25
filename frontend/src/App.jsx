@@ -2,9 +2,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { BrowserRouter, Link, Navigate, NavLink, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import Lenis from 'lenis'
 import { HugeiconsIcon } from '@hugeicons/react'
-import { LayoutAlignLeftIcon } from '@hugeicons/core-free-icons'
+import { LayoutAlignLeftIcon, LayoutAlignRightIcon } from '@hugeicons/core-free-icons'
 import {
   ArrowUp,
+  Check,
   ChevronDown,
   ChevronRight,
   ChevronsUpDown,
@@ -33,6 +34,7 @@ import {
   Trash2,
   Upload,
   X,
+  ArrowRight,
 } from 'lucide-react'
 import {
   disconnectDrive,
@@ -54,7 +56,7 @@ import {
   API_BASE,
 } from './api.js'
 import FeedbackModal from './components/FeedbackModal.jsx'
-import ChatGPTSettingsModal from './components/ChatGPTSettingsModal.jsx'
+import SettingsModal from './components/SettingsModal.jsx'
 import DotGrid from './components/DotGrid.jsx'
 import brandLogo from './assets/figma-logo-mark.svg'
 import { useI18n } from './lib/i18n.jsx'
@@ -205,7 +207,7 @@ function HomePage() {
               Engineered for speed, precision, and absolute clarity.
             </p>
             <div className="hero-actions">
-              <Link to="/data" className="btn-primary-solid">Get Started <ArrowUp size={15} /></Link>
+              <Link to="/data" className="btn-primary-solid">Get Started <ArrowRight size={15} /></Link>
               <Link to="/chat" className="btn-glass">View Documentation</Link>
             </div>
           </div>
@@ -240,7 +242,7 @@ function HomePage() {
           </div>
           <div className="prompt-actions">
             <button type="button" className="language-pill">English</button>
-            <Link to="/data" className="generate-pill">Generate <ArrowUp size={14} /></Link>
+            <Link to="/data" className="generate-pill">Generate <ArrowRight size={14} /></Link>
           </div>
         </div>
         <p className="built-label">Built for your docs</p>
@@ -1052,20 +1054,24 @@ function ChatPage({ user, onUserChange, onToast }) {
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const { t } = useI18n()
-  const [chatgptModalOpen, setChatgptModalOpen] = useState(false)
-  const [chatgptModalTab, setChatgptModalTab] = useState('general')
+  const [settingsModalOpen, setSettingsModalOpen] = useState(false)
+  const [settingsModalTab, setSettingsModalTab] = useState('general')
   const [feedbackModalOpen, setFeedbackModalOpen] = useState(false)
 
-  const openChatGPTModal = (tab = 'general') => {
-    setChatgptModalTab(tab)
-    setChatgptModalOpen(true)
+  const openSettingsModal = (tab = 'general') => {
+    setFeedbackModalOpen(false)
+    setSettingsModalTab(tab)
+    setSettingsModalOpen(true)
   }
+  const openChatGPTModal = openSettingsModal
+  const chatgptModalOpen = settingsModalOpen
+  const setChatgptModalOpen = setSettingsModalOpen
 
   useEffect(() => {
     function handleKeyDown(e) {
       if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === ',' || e.keyCode === 188)) {
         e.preventDefault()
-        openChatGPTModal('general')
+        openSettingsModal('general')
       }
     }
     window.addEventListener('keydown', handleKeyDown)
@@ -1087,6 +1093,7 @@ function ChatPage({ user, onUserChange, onToast }) {
   const [quickAddingUrl, setQuickAddingUrl] = useState(false)
   const quickFileInputRef = useRef(null)
   const bottomRef = useRef(null)
+  const sourceDropdownRef = useRef(null)
 
   const appView = location.pathname.endsWith('/data')
     ? 'data'
@@ -1143,6 +1150,29 @@ function ChatPage({ user, onUserChange, onToast }) {
   useEffect(() => {
     void refreshIndexedSources()
   }, [])
+
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (sourceDropdownRef.current && !sourceDropdownRef.current.contains(event.target)) {
+        setSourceMenuOpen(false)
+      }
+    }
+    if (sourceMenuOpen) {
+      document.addEventListener('mousedown', handleClickOutside)
+      return () => document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [sourceMenuOpen])
+
+  function getSourceIcon(type) {
+    const t = String(type || '').toLowerCase()
+    if (t.includes('web') || t.includes('url') || t.includes('http')) {
+      return <Globe size={13} />
+    }
+    if (t.includes('drive') || t.includes('google')) {
+      return <Cloud size={13} />
+    }
+    return <FileText size={13} />
+  }
 
   function addGuidedIndexMessage(userText) {
     if (!activeThread) return
@@ -1461,6 +1491,97 @@ function ChatPage({ user, onUserChange, onToast }) {
 
   return (
     <section className={`chat-page ${sidebarCollapsed ? 'collapsed' : ''}`}>
+      {sidebarCollapsed && (
+        <aside className="chat-collapsed-rail">
+          <button
+            className="rail-logo"
+            type="button"
+            onClick={() => setSidebarCollapsed(false)}
+            aria-label="Open sidebar"
+            title="Open sidebar"
+          >
+            <img src={brandLogo} alt="RagKno logo" className="rail-logo-img" />
+            <HugeiconsIcon icon={LayoutAlignRightIcon} size={18} className="rail-open-icon" />
+          </button>
+
+          <button
+            className="rail-icon-btn"
+            type="button"
+            onClick={startNewChat}
+            aria-label={t('newChat') || 'New chat'}
+            title={t('newChat') || 'New chat'}
+          >
+            <SquarePen size={17} />
+          </button>
+
+          <button
+            className="rail-icon-btn"
+            type="button"
+            onClick={() => onToast('Search chats')}
+            aria-label="Search chats"
+            title="Search chats"
+          >
+            <Search size={17} />
+          </button>
+
+          <button
+            className={`rail-icon-btn ${appView === 'chat' ? 'active' : ''}`}
+            type="button"
+            onClick={() => navigate('/chat')}
+            aria-label="Chats"
+            title="Chats"
+          >
+            <MessageSquare size={17} />
+          </button>
+
+          <button
+            className={`rail-icon-btn ${appView === 'data' ? 'active' : ''}`}
+            type="button"
+            onClick={() => navigate('/chat/data')}
+            aria-label="Data Center"
+            title="Data Center"
+          >
+            <Database size={17} />
+          </button>
+
+          <button
+            className={`rail-icon-btn ${appView === 'apps' ? 'active' : ''}`}
+            type="button"
+            onClick={() => navigate('/chat/apps')}
+            aria-label={t('connectApps') || 'Connect Apps'}
+            title={t('connectApps') || 'Connect Apps'}
+          >
+            <Cloud size={17} />
+          </button>
+
+          <div className="rail-spacer" />
+
+          <div className="rail-profile-wrap">
+            {profileMenuOpen && (
+              <div className="profile-dropup rail-profile-dropup">
+                <p>{user?.email || 'Signed in'}</p>
+                <button type="button" onClick={() => { setProfileMenuOpen(false); openSettingsModal('general'); }}><Settings size={15} /> {t('settings')} <span>⇧⌘,</span></button>
+                <button type="button" onClick={() => { setProfileMenuOpen(false); openSettingsModal('help'); }}><CircleHelp size={15} /> {t('helpFaq')}</button>
+                <button type="button" onClick={() => { setProfileMenuOpen(false); openSettingsModal('about'); }}><Info size={15} /> {t('learnMore')} <ChevronRight size={14} /></button>
+                <button type="button" onClick={() => { setProfileMenuOpen(false); setSettingsModalOpen(false); setFeedbackModalOpen(true); }}><MessageSquareHeart size={15} /> {t('giveFeedback')}</button>
+                <hr />
+                <button type="button" onClick={handleLogout}><LogOut size={15} /> {t('logOut')}</button>
+              </div>
+            )}
+            <button
+              className="rail-profile-btn"
+              type="button"
+              onClick={() => setProfileMenuOpen((open) => !open)}
+              aria-label="Account menu"
+              title={displayName}
+              aria-expanded={profileMenuOpen}
+            >
+              <UserAvatar user={user} displayName={displayName} />
+            </button>
+          </div>
+        </aside>
+      )}
+
       {!sidebarCollapsed && (
         <aside className="chat-sidebar">
           <div className="chat-sidebar-header">
@@ -1485,7 +1606,7 @@ function ChatPage({ user, onUserChange, onToast }) {
                 aria-label="Collapse sidebar"
                 title="Collapse sidebar"
               >
-                <PanelLeftClose size={17} />
+                <HugeiconsIcon icon={LayoutAlignLeftIcon} size={18} />
               </button>
             </div>
           </div>
@@ -1539,10 +1660,10 @@ function ChatPage({ user, onUserChange, onToast }) {
             {profileMenuOpen && (
               <div className="profile-dropup">
                 <p>{user?.email || 'Signed in'}</p>
-                <button type="button" onClick={() => { setProfileMenuOpen(false); openChatGPTModal('general'); }}><Settings size={15} /> {t('settings')} <span>⇧⌘,</span></button>
-                <button type="button" onClick={() => { setProfileMenuOpen(false); openChatGPTModal('help'); }}><CircleHelp size={15} /> {t('helpFaq')}</button>
-                <button type="button" onClick={() => { setProfileMenuOpen(false); openChatGPTModal('about'); }}><Info size={15} /> {t('learnMore')} <ChevronRight size={14} /></button>
-                <button type="button" onClick={() => { setProfileMenuOpen(false); setFeedbackModalOpen(true); }}><MessageSquareHeart size={15} /> {t('giveFeedback')}</button>
+                <button type="button" onClick={() => { setProfileMenuOpen(false); openSettingsModal('general'); }}><Settings size={15} /> {t('settings')} <span>⇧⌘,</span></button>
+                <button type="button" onClick={() => { setProfileMenuOpen(false); openSettingsModal('help'); }}><CircleHelp size={15} /> {t('helpFaq')}</button>
+                <button type="button" onClick={() => { setProfileMenuOpen(false); openSettingsModal('about'); }}><Info size={15} /> {t('learnMore')} <ChevronRight size={14} /></button>
+                <button type="button" onClick={() => { setProfileMenuOpen(false); setSettingsModalOpen(false); setFeedbackModalOpen(true); }}><MessageSquareHeart size={15} /> {t('giveFeedback')}</button>
                 <hr />
                 <button type="button" onClick={handleLogout}><LogOut size={15} /> {t('logOut')}</button>
               </div>
@@ -1553,7 +1674,6 @@ function ChatPage({ user, onUserChange, onToast }) {
               </div>
               <div className="user-info-text">
                 <strong>{displayName}</strong>
-                <small>Go</small>
               </div>
               <ChevronsUpDown size={13} className="user-pill-chevron" />
             </button>
@@ -1562,32 +1682,6 @@ function ChatPage({ user, onUserChange, onToast }) {
       )}
 
       <section className={`chat-canvas ${appView !== 'chat' ? 'utility-view' : ''} ${appView === 'chat' && messages.length === 0 ? 'is-empty' : ''}`}>
-        {sidebarCollapsed && (
-          <header className="chat-canvas-top-bar">
-            <button
-              className="canvas-toggle-btn"
-              type="button"
-              onClick={() => setSidebarCollapsed(false)}
-              aria-label="Open sidebar"
-              title="Open sidebar"
-            >
-              <PanelLeft size={18} />
-            </button>
-            <div className="canvas-model-selector" onClick={() => onToast('RagKno 1.0 (GPT-5.6-sol active)')}>
-              <span>RagKno</span>
-              <ChevronDown size={14} />
-            </div>
-            <button
-              className="canvas-new-chat-btn"
-              type="button"
-              onClick={startNewChat}
-              aria-label="New chat"
-              title="New chat"
-            >
-              <SquarePen size={18} />
-            </button>
-          </header>
-        )}
 
         {appView === 'data' && (
           <div className="embedded-data-center">
@@ -1711,7 +1805,7 @@ function ChatPage({ user, onUserChange, onToast }) {
                   placeholder={t('askAnything') || 'Ask anything...'}
                 />
                 <div className="chat-input-right-tools">
-                  <div className="source-dropdown">
+                  <div className="source-dropdown" ref={sourceDropdownRef}>
                     <button
                       type="button"
                       className="source-dropdown-btn"
@@ -1720,40 +1814,100 @@ function ChatPage({ user, onUserChange, onToast }) {
                         if (!sourceMenuOpen) void refreshIndexedSources()
                       }}
                       title="Sources selector"
+                      aria-expanded={sourceMenuOpen}
                     >
                       <Database size={13} />
                       <span>{t('sources') || 'Sources'}</span>
-                      <span className="source-count-badge">{indexedSources.length}</span>
-                      <ChevronDown size={12} />
+                      <span className={`source-count-badge ${selectedSourceKeys.size > 0 ? 'active' : ''}`}>
+                        {selectedSourceKeys.size > 0 ? selectedSourceKeys.size : indexedSources.length}
+                      </span>
+                      <ChevronDown size={13} className={`source-chevron ${sourceMenuOpen ? 'open' : ''}`} />
                     </button>
                     {sourceMenuOpen && (
                       <div className="source-dropdown-menu">
                         <div className="source-dropdown-head">
-                          <strong>Indexed sources</strong>
-                          <button type="button" onClick={refreshIndexedSources} disabled={sourcesLoading}>
-                            <RefreshCw size={13} className={sourcesLoading ? 'spin' : ''} />
-                          </button>
+                          <div>
+                            <strong>Sources</strong>
+                            <small>
+                              {selectedSourceKeys.size > 0
+                                ? `${selectedSourceKeys.size} of ${indexedSources.length} selected`
+                                : `${indexedSources.length} available`}
+                            </small>
+                          </div>
+                          <div className="source-head-actions">
+                            {indexedSources.length > 0 && (
+                              <button
+                                type="button"
+                                className="source-action-link"
+                                onClick={() => {
+                                  if (selectedSourceKeys.size === indexedSources.length) {
+                                    setSelectedSourceKeys(new Set())
+                                  } else {
+                                    setSelectedSourceKeys(new Set(indexedSources.map((s) => s.key)))
+                                  }
+                                }}
+                              >
+                                {selectedSourceKeys.size === indexedSources.length ? 'Clear' : 'Select all'}
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              className="source-refresh-btn"
+                              onClick={refreshIndexedSources}
+                              disabled={sourcesLoading}
+                              title="Refresh sources"
+                            >
+                              <RefreshCw size={12} className={sourcesLoading ? 'spin' : ''} />
+                            </button>
+                          </div>
                         </div>
-                        {indexedSources.length === 0 && (
-                          <p className="source-empty">No sources indexed yet.</p>
-                        )}
-                        {indexedSources.map((source) => (
-                          <label key={source.key} className="source-option">
-                            <input
-                              type="checkbox"
-                              checked={selectedSourceKeys.has(source.key)}
-                              onChange={() => toggleSourceSelection(source.key)}
-                            />
-                            <span>
-                              <strong>{source.source}</strong>
-                              <small>{source.type}</small>
-                            </span>
-                          </label>
-                        ))}
+
+                        <div className="source-dropdown-list">
+                          {indexedSources.length === 0 && (
+                            <p className="source-empty">No sources indexed yet.</p>
+                          )}
+                          {indexedSources.map((source) => {
+                            const isSelected = selectedSourceKeys.has(source.key)
+                            return (
+                              <button
+                                key={source.key}
+                                type="button"
+                                className={`source-option-btn ${isSelected ? 'selected' : ''}`}
+                                onClick={() => toggleSourceSelection(source.key)}
+                              >
+                                <span className="source-option-icon">
+                                  {getSourceIcon(source.type)}
+                                </span>
+                                <span className="source-option-text">
+                                  <strong className="source-option-title">{source.source}</strong>
+                                  <small className="source-option-type">{source.type}</small>
+                                </span>
+                                {isSelected && (
+                                  <Check size={15} className="source-option-check" />
+                                )}
+                              </button>
+                            )
+                          })}
+                        </div>
+
                         <div className="source-dropdown-actions">
-                          <button type="button" onClick={() => navigate('/chat/data')}>Data Center</button>
-                          <button type="button" onClick={unindexSelectedSources} disabled={selectedSourceKeys.size === 0}>
-                            <Trash2 size={13} /> Unindex
+                          <button
+                            type="button"
+                            className="source-footer-btn"
+                            onClick={() => {
+                              setSourceMenuOpen(false)
+                              navigate('/chat/data')
+                            }}
+                          >
+                            Data Center
+                          </button>
+                          <button
+                            type="button"
+                            className="source-footer-btn danger"
+                            onClick={unindexSelectedSources}
+                            disabled={selectedSourceKeys.size === 0}
+                          >
+                            <Trash2 size={12} /> Unindex {selectedSourceKeys.size > 0 ? `(${selectedSourceKeys.size})` : ''}
                           </button>
                         </div>
                       </div>
@@ -1830,10 +1984,10 @@ function ChatPage({ user, onUserChange, onToast }) {
         </div>
       )}
 
-      <ChatGPTSettingsModal
-        isOpen={chatgptModalOpen}
-        onClose={() => setChatgptModalOpen(false)}
-        initialTab={chatgptModalTab}
+      <SettingsModal
+        isOpen={settingsModalOpen}
+        onClose={() => setSettingsModalOpen(false)}
+        initialTab={settingsModalTab}
         user={user}
         onClearHistory={() => {
           setThreads([])
@@ -1843,6 +1997,17 @@ function ChatPage({ user, onUserChange, onToast }) {
             localStorage.removeItem(ACTIVE_THREAD_KEY)
           } catch {}
           onToast?.({ type: 'info', message: t('historyCleared') || 'Chat history cleared.' })
+        }}
+        onToast={onToast}
+        onNavigateData={() => setAppView('data')}
+        onSampleQuestion={(q) => {
+          setInput(q)
+          setAppView('chat')
+        }}
+        onLogout={handleLogout}
+        onOpenFeedback={() => {
+          setSettingsModalOpen(false)
+          setFeedbackModalOpen(true)
         }}
       />
 

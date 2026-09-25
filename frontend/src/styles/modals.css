@@ -1,15 +1,15 @@
-/* Modal Backdrops & Dialogs */
+/* Modal Backdrops & Dialogs - Dark Theme Default */
 
 .app-modal-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.65);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 9999;
+  z-index: 99999;
   padding: 1rem;
   animation: modalFadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
@@ -20,32 +20,24 @@
 }
 
 .app-modal-card {
-  background: #ffffff;
-  color: #18181b;
+  background: #171717;
+  color: #ececec;
   width: 100%;
   max-width: 580px;
   max-height: 85vh;
   border-radius: 20px;
-  border: 1px solid #e4e4e7;
-  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 32px 64px -16px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(255, 255, 255, 0.05);
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  animation: modalSlideUp 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-}
-
-.dark .app-modal-card,
-[data-theme="dark"] .app-modal-card {
-  background: #111113;
-  color: #f4f4f5;
-  border-color: rgba(255, 255, 255, 0.1);
-  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.65);
+  animation: modalSlideUp 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
 @keyframes modalSlideUp {
   from {
     opacity: 0;
-    transform: scale(0.96) translateY(10px);
+    transform: scale(0.96) translateY(8px);
   }
   to {
     opacity: 1;
@@ -58,12 +50,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  border-bottom: 1px solid #f4f4f5;
-}
-
-.dark .app-modal-header,
-[data-theme="dark"] .app-modal-header {
-  border-bottom-color: rgba(255, 255, 255, 0.08);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .app-modal-header h3 {
@@ -73,14 +60,16 @@
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  color: #ffffff;
 }
 
 .app-modal-close-btn {
-  background: transparent;
-  border: none;
-  color: #71717a;
+  background: #262626;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: #a3a3a3;
   cursor: pointer;
-  padding: 0.35rem;
+  width: 32px;
+  height: 32px;
   border-radius: 8px;
   display: inline-flex;
   align-items: center;
@@ -89,13 +78,7 @@
 }
 
 .app-modal-close-btn:hover {
-  background: #f4f4f5;
-  color: #18181b;
-}
-
-.dark .app-modal-close-btn:hover,
-[data-theme="dark"] .app-modal-close-btn:hover {
-  background: rgba(255, 255, 255, 0.1);
+  background: #333333;
   color: #ffffff;
 }
 
@@ -119,7 +102,7 @@
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  color: #71717a;
+  color: #a3a3a3;
   margin-bottom: 0.25rem;
 }
 
@@ -128,50 +111,32 @@
   align-items: center;
   justify-content: space-between;
   padding: 0.75rem 1rem;
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
+  background: #212121;
+  border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 12px;
-}
-
-.dark .settings-row,
-[data-theme="dark"] .settings-row {
-  background: rgba(255, 255, 255, 0.03);
-  border-color: rgba(255, 255, 255, 0.07);
 }
 
 .settings-label strong {
   display: block;
   font-size: 0.95rem;
   font-weight: 600;
+  color: #ffffff;
 }
 
 .settings-label span {
   font-size: 0.8rem;
-  color: #64748b;
-}
-
-.dark .settings-label span,
-[data-theme="dark"] .settings-label span {
-  color: #94a3b8;
+  color: #a3a3a3;
 }
 
 .settings-input,
 .settings-select {
   padding: 0.45rem 0.75rem;
   border-radius: 8px;
-  border: 1px solid #cbd5e1;
-  background: #ffffff;
-  color: inherit;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: #262626;
+  color: #ececec;
   font-size: 0.85rem;
   outline: none;
-}
-
-.dark .settings-input,
-.dark .settings-select,
-[data-theme="dark"] .settings-input,
-[data-theme="dark"] .settings-select {
-  background: #18181b;
-  border-color: rgba(255, 255, 255, 0.15);
 }
 
 /* Help & Shortcuts */
@@ -184,34 +149,23 @@
 }
 
 .shortcut-kbd {
-  background: #f1f5f9;
-  border: 1px solid #cbd5e1;
+  background: #262626;
+  border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 6px;
   padding: 0.2rem 0.5rem;
   font-size: 0.75rem;
   font-family: monospace;
   font-weight: 600;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
-}
-
-.dark .shortcut-kbd,
-[data-theme="dark"] .shortcut-kbd {
-  background: #27272a;
-  border-color: #3f3f46;
-  color: #e4e4e7;
+  color: #ececec;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
 }
 
 /* Modal Footer */
 .app-modal-footer {
   padding: 1rem 1.5rem;
-  border-top: 1px solid #f4f4f5;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
   display: flex;
   align-items: center;
   justify-content: flex-end;
   gap: 0.75rem;
-}
-
-.dark .app-modal-footer,
-[data-theme="dark"] .app-modal-footer {
-  border-top-color: rgba(255, 255, 255, 0.08);
 }

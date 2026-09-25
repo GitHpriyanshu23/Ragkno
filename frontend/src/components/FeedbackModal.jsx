@@ -1,4 +1,5 @@
 import React, { useEffect } from 'react'
+import { X } from 'lucide-react'
 import { FeedbackWidget } from '@/components/ui/feedback-widget'
 
 export default function FeedbackModal({ isOpen, onClose, onSubmitFeedback, initialRating = "neutral" }) {
@@ -26,6 +27,15 @@ export default function FeedbackModal({ isOpen, onClose, onSubmitFeedback, initi
         onMouseDown={(e) => e.stopPropagation()}
         className="feedback-modal-wrapper"
       >
+        <button
+          type="button"
+          className="feedback-modal-close"
+          onClick={onClose}
+          aria-label="Close feedback"
+          title="Close (Esc)"
+        >
+          <X size={15} />
+        </button>
         <FeedbackWidget
           initialRating={initialRating}
           onSubmit={async (data) => {
@@ -38,5 +48,3 @@ export default function FeedbackModal({ isOpen, onClose, onSubmitFeedback, initi
     </div>
   )
 }
-
-

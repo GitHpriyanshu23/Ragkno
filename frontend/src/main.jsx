@@ -2,12 +2,13 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App.jsx'
 import './index.css'
-import { applyTheme } from './components/ChatGPTSettingsModal.jsx'
 import { I18nProvider } from './lib/i18n.jsx'
 
+// Remove any lingering dark theme classes/attributes and clear theme preference
 try {
-  const savedTheme = localStorage.getItem('ragkno_appearance') || 'system'
-  applyTheme(savedTheme)
+  document.documentElement.classList.remove('dark')
+  document.documentElement.removeAttribute('data-theme')
+  localStorage.removeItem('ragkno_appearance')
 } catch {}
 
 ReactDOM.createRoot(document.getElementById('root')).render(

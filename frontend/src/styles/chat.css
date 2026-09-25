@@ -1243,180 +1243,420 @@
 
 /* Final RagKno product shell polish */
 .chat-page {
-  display: grid;
-  grid-template-columns: 272px minmax(0, 1fr);
-  min-height: 100vh;
-  height: 100vh;
+  display: grid !important;
+  grid-template-columns: 260px minmax(0, 1fr) !important;
+  min-height: 100vh !important;
+  height: 100vh !important;
   background: #000000 !important;
-  color: #efede8;
+  color: #efede8 !important;
+  overflow: hidden !important;
 }
 
 .chat-page.collapsed {
-  grid-template-columns: 64px minmax(0, 1fr);
+  display: grid !important;
+  grid-template-columns: 56px minmax(0, 1fr) !important;
+  width: 100vw !important;
+  height: 100vh !important;
+}
+
+.chat-page.collapsed .chat-canvas {
+  width: 100% !important;
+  max-width: 100% !important;
+  height: 100vh !important;
+  position: relative !important;
 }
 
 .chat-sidebar,
-.chat-collapsed-rail,
 .chat-canvas {
   background: #000000 !important;
 }
 
 .chat-sidebar {
+  width: 260px !important;
+  min-width: 260px !important;
+  max-width: 260px !important;
+  height: 100vh !important;
+  max-height: 100vh !important;
+  background: #0d0d0f !important;
   border-right: 1px solid rgba(255, 255, 255, 0.08) !important;
-  padding: 18px 12px 14px;
-  gap: 8px;
-}
-
-.chat-collapsed-rail {
-  border-right: 1px solid rgba(255, 255, 255, 0.08) !important;
+  padding: 12px 10px 10px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 6px !important;
+  box-sizing: border-box !important;
+  overflow: hidden !important;
 }
 
 .chat-sidebar-header {
-  margin-bottom: 18px;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  padding: 2px 4px 6px !important;
+  margin-bottom: 2px !important;
 }
 
 .chat-sidebar-brand {
-  gap: 10px;
-  color: #f4f1ea;
-  font-family: Inter, system-ui, sans-serif;
-  font-size: 1.15rem;
-  letter-spacing: -0.02em;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  color: #ffffff !important;
+  font-family: inherit !important;
+  font-weight: 700 !important;
+  font-size: 1.05rem !important;
+  text-decoration: none !important;
 }
 
-.chat-sidebar-brand img,
-.rail-logo img {
-  width: 25px;
-  height: 25px;
-  padding: 4px;
-  border: 1px solid rgba(245, 242, 235, 0.78);
-  border-radius: 7px;
-  filter: none;
+.chat-sidebar-brand img {
+  width: 24px !important;
+  height: 24px !important;
+  padding: 3px !important;
+  border: 1.5px solid rgba(255, 255, 255, 0.6) !important;
+  border-radius: 6px !important;
+  filter: brightness(0) invert(1) !important;
+  display: block !important;
 }
 
-.rail-open-icon {
-  display: none;
+.chat-sidebar-header-actions {
+  display: flex !important;
+  align-items: center !important;
+  gap: 2px !important;
 }
 
-.rail-logo:hover img {
-  display: none;
+.sidebar-action-icon-btn,
+.sidebar-toggle-btn {
+  width: 30px !important;
+  height: 30px !important;
+  border: none !important;
+  border-radius: 8px !important;
+  background: transparent !important;
+  color: #8e8e93 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  cursor: pointer !important;
+  transition: all 0.15s ease !important;
+  padding: 0 !important;
+  outline: none !important;
 }
 
-.rail-logo:hover .rail-open-icon {
-  display: inline-block;
+.sidebar-action-icon-btn:hover,
+.sidebar-toggle-btn:hover {
+  background: rgba(255, 255, 255, 0.08) !important;
+  color: #ffffff !important;
 }
 
-.history-btn {
-  min-height: 38px;
-  border-radius: 10px;
-  color: #c9c5bd;
-  font-size: 0.91rem;
-  font-weight: 500;
+.new-chat-pill {
+  width: 100% !important;
+  min-height: 36px !important;
+  border-radius: 10px !important;
+  background: rgba(255, 255, 255, 0.06) !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  color: #ececec !important;
+  font-size: 0.85rem !important;
+  font-weight: 600 !important;
+  padding: 8px 12px !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 10px !important;
+  cursor: pointer !important;
+  transition: all 0.15s ease !important;
 }
 
-.history-btn.active {
-  background: #242424;
-  color: #f4f1ea;
+.new-chat-pill:hover {
+  background: rgba(255, 255, 255, 0.12) !important;
+  color: #ffffff !important;
+  border-color: rgba(255, 255, 255, 0.16) !important;
 }
 
-.history-btn.primary-nav {
-  color: #e4dfd6;
+.sidebar-nav-group {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 2px !important;
+  margin: 4px 0 !important;
 }
 
-.chat-sidebar h4 {
-  margin: 20px 6px 8px;
-  color: #77736b;
-  font-size: 0.68rem;
+.sidebar-nav-group .history-btn {
+  min-height: 34px !important;
+  padding: 6px 10px !important;
+  font-size: 0.84rem !important;
+  border-radius: 8px !important;
+  color: #a1a1aa !important;
+  background: transparent !important;
+  border: none !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 10px !important;
+  cursor: pointer !important;
+  transition: all 0.15s ease !important;
+  width: 100% !important;
+  text-align: left !important;
+}
+
+.sidebar-nav-group .history-btn:hover {
+  background: rgba(255, 255, 255, 0.06) !important;
+  color: #ffffff !important;
+}
+
+.sidebar-nav-group .history-btn.active {
+  background: rgba(255, 255, 255, 0.1) !important;
+  color: #ffffff !important;
+  font-weight: 600 !important;
+}
+
+.chat-sidebar-section-title {
+  padding: 8px 6px 2px !important;
+  font-size: 0.68rem !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.08em !important;
+  text-transform: uppercase !important;
+  color: #636366 !important;
+}
+
+.sidebar-threads-scroll {
+  flex: 1 !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 2px !important;
+  padding-right: 2px !important;
+}
+
+.sidebar-threads-scroll::-webkit-scrollbar {
+  width: 4px !important;
+}
+
+.sidebar-threads-scroll::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12) !important;
+  border-radius: 999px !important;
 }
 
 .history-item {
-  grid-template-columns: minmax(0, 1fr) 22px;
+  position: relative !important;
+  display: flex !important;
+  align-items: center !important;
+  border-radius: 8px !important;
+  transition: background 0.15s ease !important;
+}
+
+.history-item:hover {
+  background: rgba(255, 255, 255, 0.05) !important;
+}
+
+.history-item.active {
+  background: rgba(255, 255, 255, 0.09) !important;
+}
+
+.history-item .history-btn {
+  flex: 1 !important;
+  min-height: 32px !important;
+  padding: 6px 8px !important;
+  font-size: 0.82rem !important;
+  color: #c7c7cc !important;
+  background: transparent !important;
+  border: none !important;
+  text-align: left !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  cursor: pointer !important;
+}
+
+.history-item.active .history-btn {
+  color: #ffffff !important;
+  font-weight: 500 !important;
 }
 
 .history-delete-btn {
-  opacity: 0;
+  width: 26px !important;
+  height: 26px !important;
+  border: none !important;
+  background: transparent !important;
+  color: #636366 !important;
+  border-radius: 6px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  cursor: pointer !important;
+  opacity: 0 !important;
+  transition: all 0.15s ease !important;
+  margin-right: 4px !important;
 }
 
-.history-item:hover .history-delete-btn,
-.history-item.active .history-delete-btn {
-  opacity: 1;
+.history-item:hover .history-delete-btn {
+  opacity: 1 !important;
 }
 
+.history-delete-btn:hover {
+  color: #ef4444 !important;
+  background: rgba(239, 68, 68, 0.15) !important;
+}
+
+.chat-sidebar-footer {
+  position: relative !important;
+  margin-top: auto !important;
+  padding-top: 8px !important;
+  border-top: 1px solid rgba(255, 255, 255, 0.08) !important;
+}
+
+/* Collapsed Rail (Half-opened icons mode) */
 .chat-collapsed-rail {
-  border-right: 1px solid #262626;
-  padding: 16px 10px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 10px;
-}
-
-.rail-logo,
-.rail-icon-btn,
-.sidebar-toggle-btn,
-.rail-profile-btn {
-  width: 38px;
-  height: 38px;
-  border: 0;
-  border-radius: 10px;
-  background: transparent;
-  color: #bdb8ae;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
+  width: 56px !important;
+  min-width: 56px !important;
+  max-width: 56px !important;
+  height: 100vh !important;
+  max-height: 100vh !important;
+  background: #0d0d0f !important;
+  border-right: 1px solid rgba(255, 255, 255, 0.08) !important;
+  padding: 12px 8px 10px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  gap: 8px !important;
+  box-sizing: border-box !important;
+  overflow: visible !important;
+  z-index: 30 !important;
 }
 
 .rail-logo {
-  margin-bottom: 10px;
+  position: relative !important;
+  width: 36px !important;
+  height: 36px !important;
+  border: none !important;
+  border-radius: 8px !important;
+  background: transparent !important;
+  color: #a1a1aa !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  cursor: pointer !important;
+  transition: all 0.15s ease !important;
+  padding: 0 !important;
+  margin-bottom: 2px !important;
+  outline: none !important;
 }
 
-.rail-logo img {
-  width: 28px;
-  height: 28px;
+.rail-logo img,
+.rail-logo .rail-logo-img {
+  width: 24px !important;
+  height: 24px !important;
+  padding: 3px !important;
+  border: 1.5px solid rgba(255, 255, 255, 0.6) !important;
+  border-radius: 6px !important;
+  filter: brightness(0) invert(1) !important;
+  display: block !important;
+  transition: opacity 0.15s ease !important;
 }
 
-.rail-icon-btn:hover,
-.rail-icon-btn.active,
-.sidebar-toggle-btn:hover,
-.rail-profile-btn:hover {
-  background: #242424;
-  color: #f4f1ea;
+.rail-logo .rail-open-icon {
+  display: none !important;
+  color: #ffffff !important;
+}
+
+.rail-logo:hover {
+  background: rgba(255, 255, 255, 0.08) !important;
+  color: #ffffff !important;
+}
+
+.rail-logo:hover img,
+.rail-logo:hover .rail-logo-img {
+  display: none !important;
+}
+
+.rail-logo:hover .rail-open-icon {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+.rail-icon-btn {
+  width: 36px !important;
+  height: 36px !important;
+  border: none !important;
+  border-radius: 8px !important;
+  background: transparent !important;
+  color: #8e8e93 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  cursor: pointer !important;
+  transition: all 0.15s ease !important;
+  padding: 0 !important;
+  outline: none !important;
+}
+
+.rail-icon-btn:hover {
+  background: rgba(255, 255, 255, 0.08) !important;
+  color: #ffffff !important;
+}
+
+.rail-icon-btn.active {
+  background: rgba(255, 255, 255, 0.12) !important;
+  color: #ffffff !important;
 }
 
 .rail-spacer {
-  flex: 1;
+  flex: 1 !important;
+}
+
+.rail-profile-wrap {
+  position: relative !important;
+  width: 100% !important;
+  display: flex !important;
+  justify-content: center !important;
+  margin-top: auto !important;
+  padding-top: 6px !important;
+  border-top: 1px solid rgba(255, 255, 255, 0.08) !important;
 }
 
 .rail-profile-btn {
-  background: transparent;
-  color: #fff;
-  border-radius: 999px;
-  font-size: 1rem;
-  font-weight: 600;
-  padding: 0;
-  overflow: visible;
-}
-
-.rail-profile-btn img,
-.rail-profile-btn span {
-  width: 100%;
-  height: 100%;
-  border-radius: inherit;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  object-fit: cover;
-  text-transform: uppercase;
-  background: #5b2fc9;
+  width: 36px !important;
+  height: 36px !important;
+  border: none !important;
+  border-radius: 50% !important;
+  background: transparent !important;
+  color: #fff !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  cursor: pointer !important;
+  padding: 0 !important;
+  transition: transform 0.15s ease !important;
+  outline: none !important;
 }
 
 .rail-profile-btn:hover {
-  background: transparent;
+  transform: scale(1.05) !important;
 }
 
-.rail-profile-btn:hover img,
-.rail-profile-btn:hover span {
-  background: #6b3be2;
+.rail-profile-btn img,
+.rail-profile-btn .user-avatar,
+.rail-profile-btn > span {
+  width: 32px !important;
+  height: 32px !important;
+  border-radius: 50% !important;
+  background: #5b2fc9 !important;
+  color: #ffffff !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  font-weight: 600 !important;
+  font-size: 0.88rem !important;
+  text-transform: uppercase !important;
+  object-fit: cover !important;
+}
+
+.rail-profile-dropup {
+  position: absolute !important;
+  left: calc(100% + 10px) !important;
+  bottom: 0 !important;
+  width: 220px !important;
+  z-index: 60 !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  border-radius: 14px !important;
+  background: #18181b !important;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6) !important;
+  padding: 8px !important;
 }
 
 .chat-sidebar-footer {

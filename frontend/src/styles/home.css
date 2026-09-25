@@ -375,13 +375,16 @@ section {
 .feature-card {
   min-height: 204px;
   border-radius: 14px;
-  background: #fff;
+  background: #ffffff;
+  border: 1px solid #e2ded7;
   padding: 24px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04);
 }
 
 .feature-card.dark-card {
-  background: #111;
-  color: #fff;
+  background: #111111;
+  color: #ffffff;
+  border: 1px solid #111111;
 }
 
 .feature-icon {
@@ -391,30 +394,36 @@ section {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: #f0f0f0;
-  color: #111;
+  background: #f0ede8;
+  color: #111111;
 }
 
 .dark-card .feature-icon {
-  background: rgba(255, 255, 255, 0.1);
-  color: #fff;
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
 }
 
 .feature-card h3 {
   margin: 20px 0 8px;
   font-size: 1rem;
   line-height: 1.5;
+  color: #111111;
+  font-weight: 700;
+}
+
+.feature-card.dark-card h3 {
+  color: #ffffff;
 }
 
 .feature-card p {
   margin: 0;
-  color: #666;
+  color: #666666;
   font-size: 0.875rem;
   line-height: 1.62;
 }
 
 .feature-card.dark-card p {
-  color: rgba(255, 255, 255, 0.62);
+  color: rgba(255, 255, 255, 0.7);
 }
 
 .connect-section {
@@ -444,21 +453,22 @@ section {
 }
 
 .connect-index {
-  color: #999;
+  color: #999999;
   font-size: 0.75rem;
   line-height: 1.65;
+  font-weight: 700;
 }
 
 .connect-item h3 {
   margin: 0 0 4px;
-  color: #111;
+  color: #111111;
   font-size: 0.875rem;
   font-weight: 700;
 }
 
 .connect-item p {
   margin: 0;
-  color: #666;
+  color: #666666;
   font-size: 0.75rem;
   line-height: 1.55;
 }
@@ -470,15 +480,18 @@ section {
 }
 
 .tile {
-  min-height: 150px;
-  border-radius: 8px;
+  height: 160px;
+  max-height: 160px;
+  border-radius: 10px;
   overflow: hidden;
-  background: #111;
+  background: #111111;
+  border: 1px solid #e0deda;
 }
 
 .tile.large {
   grid-column: span 2;
-  min-height: 180px;
+  height: 220px;
+  max-height: 220px;
 }
 
 .tile img {

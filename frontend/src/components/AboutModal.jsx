@@ -25,7 +25,7 @@ export default function AboutModal({ isOpen, onClose }) {
         </header>
 
         <div className="app-modal-body">
-          <p style={{ fontSize: '0.95rem', lineHeight: '1.6', color: '#52525b', margin: 0 }}>
+          <p style={{ fontSize: '0.95rem', lineHeight: '1.6', color: '#a3a3a3', margin: 0 }}>
             <strong>RagKno</strong> is a high-performance Retrieval-Augmented Generation (RAG) platform designed to search, synthesize, and answer questions across your Google Drive and documents with strict user privacy.
           </p>
 
@@ -60,9 +60,9 @@ export default function AboutModal({ isOpen, onClose }) {
             </div>
           </section>
 
-          <div style={{ padding: '0.75rem 1rem', background: '#f8fafc', borderRadius: '12px', fontSize: '0.82rem', color: '#64748b', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ padding: '0.75rem 1rem', background: '#212121', border: '1px solid rgba(255, 255, 255, 0.08)', borderRadius: '12px', fontSize: '0.82rem', color: '#a3a3a3', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span>RagKno Core v1.0.0</span>
-            <span style={{ fontWeight: 600 }}>Created by Priyanshu Urmaliya</span>
+            <span style={{ fontWeight: 600, color: '#ececec' }}>Created by Priyanshu Urmaliya</span>
           </div>
         </div>
 
