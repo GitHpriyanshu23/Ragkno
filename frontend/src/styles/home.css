@@ -729,3 +729,148 @@ section {
   }
 }
 
+/* ── Site Footer ───────────────────────────────────────────── */
+
+.site-footer {
+  width: 100%;
+  background: #f5f4f1;
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+  overflow: hidden;
+  position: relative;
+}
+
+.footer-inner {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 72px 40px 48px;
+  display: grid;
+  grid-template-columns: 1fr 2fr;
+  gap: 64px;
+  align-items: start;
+}
+
+/* Brand column */
+.footer-brand {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.footer-logo-link {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  text-decoration: none;
+  color: #1a1a1a;
+  font-weight: 800;
+  font-size: 1.25rem;
+  letter-spacing: 0.04em;
+  transition: opacity 0.2s;
+}
+
+.footer-logo-link:hover {
+  opacity: 0.7;
+}
+
+.footer-logo-img {
+  width: 32px;
+  height: 32px;
+  padding: 6px;
+  object-fit: contain;
+  border: 2px solid #1a1a1a;
+  border-radius: 8px;
+}
+
+.footer-copyright {
+  margin: 0;
+  font-size: 0.8rem;
+  color: #999;
+  line-height: 1.5;
+}
+
+/* Link columns */
+.footer-links {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 32px;
+}
+
+.footer-col {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.footer-col h4 {
+  margin: 0 0 2px;
+  font-size: 0.68rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #1a1a1a;
+}
+
+.footer-col a {
+  text-decoration: none;
+  font-size: 0.8rem;
+  color: #777;
+  transition: color 0.2s;
+  line-height: 1.5;
+}
+
+.footer-col a:hover {
+  color: #1a1a1a;
+}
+
+/* Watermark */
+.footer-watermark {
+  width: 100%;
+  text-align: center;
+  font-size: clamp(6rem, 16vw, 13rem);
+  font-weight: 800;
+  color: rgba(0, 0, 0, 0.06);
+  line-height: 0.85;
+  letter-spacing: -0.03em;
+  padding: 0 0 32px;
+  user-select: none;
+  pointer-events: none;
+  margin-top: -16px;
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 40%);
+  mask-image: linear-gradient(to bottom, transparent 0%, black 40%);
+}
+
+/* ── Footer Responsive ─────────────────────────────────────── */
+
+@media (max-width: 900px) {
+  .footer-inner {
+    grid-template-columns: 1fr;
+    gap: 40px;
+    padding: 56px 32px 36px;
+  }
+
+  .footer-links {
+    grid-template-columns: repeat(4, 1fr);
+  }
+
+  .footer-watermark {
+    font-size: clamp(4.5rem, 14vw, 10rem);
+    padding-bottom: 24px;
+  }
+}
+
+@media (max-width: 620px) {
+  .footer-inner {
+    padding: 48px 24px 32px;
+    gap: 36px;
+  }
+
+  .footer-links {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 28px;
+  }
+
+  .footer-watermark {
+    font-size: clamp(3.5rem, 18vw, 6rem);
+    padding-bottom: 20px;
+  }
+}

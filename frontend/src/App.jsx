@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { BrowserRouter, Link, Navigate, NavLink, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
+import { BrowserRouter, Link, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import Lenis from 'lenis'
 import { HugeiconsIcon } from '@hugeicons/react'
 import { LayoutAlignLeftIcon, LayoutAlignRightIcon } from '@hugeicons/core-free-icons'
@@ -59,6 +59,7 @@ import FeedbackModal from './components/FeedbackModal.jsx'
 import SettingsModal from './components/SettingsModal.jsx'
 import DotGrid from './components/DotGrid.jsx'
 import brandLogo from './assets/figma-logo-mark.svg'
+import brandLogoDark from './assets/figma-logo-mark-dark.svg'
 import { useI18n } from './lib/i18n.jsx'
 import googleLogo from './assets/google-logo-2025.webp'
 import heroImage from './assets/ragkno-hero.png'
@@ -101,11 +102,6 @@ function AppShell({ children, toasts, onDismissToast }) {
                   <img src={brandLogo} alt="RAGKNO logo" className="brand-logo" />
                   <span>RAGKNO</span>
                 </Link>
-                <nav className="top-links">
-                  <NavLink to="/" className={({ isActive }) => `top-link ${isActive ? 'active' : ''}`}>Home</NavLink>
-                  <NavLink to="/data" className={({ isActive }) => `top-link ${isActive ? 'active' : ''}`}>Data</NavLink>
-                  <NavLink to="/chat" className={({ isActive }) => `top-link ${isActive ? 'active' : ''}`}>Chat</NavLink>
-                </nav>
                 <div className="top-actions">
                   <Link to="/chat" className="navbar-button secondary">Login</Link>
                   <Link to="/data" className="navbar-button primary">Get started</Link>
@@ -122,9 +118,6 @@ function AppShell({ children, toasts, onDismissToast }) {
               </div>
               {mobileOpen && (
                 <nav className="mobile-menu" aria-label="Mobile navigation">
-                  <NavLink to="/" className={({ isActive }) => `mobile-menu-link ${isActive ? 'active' : ''}`}>Home</NavLink>
-                  <NavLink to="/data" className={({ isActive }) => `mobile-menu-link ${isActive ? 'active' : ''}`}>Data</NavLink>
-                  <NavLink to="/chat" className={({ isActive }) => `mobile-menu-link ${isActive ? 'active' : ''}`}>Chat</NavLink>
                   <div className="mobile-menu-actions">
                     <Link to="/chat" className="navbar-button secondary" onClick={() => setMobileOpen(false)}>Login</Link>
                     <Link to="/data" className="navbar-button primary" onClick={() => setMobileOpen(false)}>Get started</Link>
@@ -136,16 +129,6 @@ function AppShell({ children, toasts, onDismissToast }) {
         </header>
       )}
       <main className={isAppRoute ? 'chat-main' : isHomeRoute || isLoginRoute ? 'home-main' : 'page-main'}>{children}</main>
-      {!isAppRoute && !isLoginRoute && (
-        <footer className="site-footer">
-          <div>© 2026 RAGKNO ARCHIVE. ALL RIGHTS RESERVED.</div>
-          <div className="footer-links">
-            <a href="#">Privacy</a>
-            <a href="#">Terms</a>
-            <a href="#">API Documentation</a>
-          </div>
-        </footer>
-      )}
 
       {toasts.length > 0 && (
         <div className="toast-stack" role="status" aria-live="polite">
@@ -368,6 +351,48 @@ function HomePage() {
           <Link className="btn-outline" to="/chat">Request Demo</Link>
         </div>
       </section>
+
+      <footer className="site-footer">
+        <div className="footer-inner">
+          <div className="footer-brand">
+            <Link to="/" className="footer-logo-link">
+              <img src={brandLogoDark} alt="RAGKNO logo" className="footer-logo-img" />
+              <span>RAGKNO</span>
+            </Link>
+            <p className="footer-copyright">© RagKno 2026. All rights reserved.</p>
+          </div>
+
+          <div className="footer-links">
+            <div className="footer-col">
+              <h4>Product</h4>
+              <Link to="/data">Features</Link>
+              <Link to="/chat">Chat Assistant</Link>
+              <Link to="/data">Data Hub</Link>
+              <Link to="/data">Integrations</Link>
+            </div>
+            <div className="footer-col">
+              <h4>Resources</h4>
+              <a href="https://github.com" target="_blank" rel="noopener noreferrer">GitHub</a>
+              <Link to="/chat">Documentation</Link>
+              <Link to="/chat">API Reference</Link>
+              <Link to="/chat">Help Center</Link>
+            </div>
+            <div className="footer-col">
+              <h4>Legal</h4>
+              <Link to="/">Privacy Policy</Link>
+              <Link to="/">Terms of Service</Link>
+              <Link to="/">Cookie Policy</Link>
+            </div>
+            <div className="footer-col">
+              <h4>Account</h4>
+              <Link to="/login">Sign Up</Link>
+              <Link to="/login">Login</Link>
+              <Link to="/data">Dashboard</Link>
+            </div>
+          </div>
+        </div>
+        <div className="footer-watermark" aria-hidden="true">RagKno</div>
+      </footer>
     </>
   )
 }
