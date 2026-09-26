@@ -7,7 +7,7 @@ from langchain_openai import ChatOpenAI
 from langchain_google_genai import ChatGoogleGenerativeAI
 from sentence_transformers import CrossEncoder
 
-from src.vectorstore import FaissVectorStore
+from src.chroma_store import ChromaVectorStore
 
 try:
     from rank_bm25 import BM25Okapi
@@ -24,17 +24,9 @@ class RAGSearch:
         "gpt-6-astra",
     ]
 
-    def __init__(self, persist_dir: str = "faiss_store", embedding_model: str = "all-MiniLM-L6-v2", llm_model: str = "gpt-5.6-sol"):
-        self.vectorstore = FaissVectorStore(persist_dir, embedding_model)
-        # Load or build vectorstore
-        faiss_path = os.path.join(persist_dir, "faiss.index")
-        meta_path = os.path.join(persist_dir, "metadata.pkl")
-        if not (os.path.exists(faiss_path) and os.path.exists(meta_path)):
-            from src.data_loader import load_all_documents
-            docs = load_all_documents("data")
-            self.vectorstore.build_from_documents(docs)
-        else:
-            self.vectorstore.load()
+    def __init__(self, persist_dir: str = "chroma_store", embedding_model: str = "all-MiniLM-L6-v2", llm_model: str = "gpt-5.6-sol"):
+        self.vectorstore = ChromaVectorStore(persist_dir=persist_dir, embedding_model=embedding_model)
+        print(f"[INFO] RAGSearch using ChromaVectorStore at '{persist_dir}'")
 
         self.agentrouter_api_key = os.getenv("AGENTROUTER_API_KEY") or os.getenv("AGENT_ROUTER_API_KEY")
         self.agentrouter_base_url = os.getenv("AGENTROUTER_BASE_URL", "https://agentrouter.org/v1")
@@ -593,7 +585,7 @@ class RAGSearch:
         retrieval_query = query if not use_memory_for_retrieval else f"{query} {retrieval_hint}"
 
         candidate_k = max(top_k * 20, 120)
-        dense_results = self.vectorstore.query(retrieval_query, top_k=candidate_k)
+        dense_results = self.vectorstore.query(retrieval_query, top_k=candidate_k, user_id=user_id)
         sparse_results = self._bm25_retrieve(retrieval_query, top_k=candidate_k)
         fused_results = self._rrf_fuse(dense_results, sparse_results)
         ranked = self._rank_results(retrieval_query, fused_results) if use_reranker else fused_results

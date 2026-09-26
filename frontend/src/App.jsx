@@ -35,6 +35,7 @@ import {
   Upload,
   X,
   ArrowRight,
+  ArrowDown,
 } from 'lucide-react'
 import {
   disconnectDrive,
@@ -1105,6 +1106,14 @@ function ChatPage({ user, onUserChange, onToast }) {
         e.preventDefault()
         openSettingsModal('general')
       }
+      if (
+        ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === 's' || e.key === 'S')) ||
+        ((e.metaKey || e.ctrlKey) && (e.key === 'b' || e.key === 'B')) ||
+        ((e.metaKey || e.ctrlKey) && e.key === '\\')
+      ) {
+        e.preventDefault()
+        setSidebarCollapsed((prev) => !prev)
+      }
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
@@ -1125,7 +1134,21 @@ function ChatPage({ user, onUserChange, onToast }) {
   const [quickAddingUrl, setQuickAddingUrl] = useState(false)
   const quickFileInputRef = useRef(null)
   const bottomRef = useRef(null)
+  const chatScrollRef = useRef(null)
   const sourceDropdownRef = useRef(null)
+  const [showScrollBottom, setShowScrollBottom] = useState(false)
+
+  const handleChatScroll = () => {
+    const el = chatScrollRef.current
+    if (!el) return
+    const isOverflowing = el.scrollHeight > el.clientHeight + 80
+    const isScrolledUp = el.scrollHeight - el.scrollTop - el.clientHeight > 100
+    setShowScrollBottom(isOverflowing && isScrolledUp)
+  }
+
+  const scrollToBottom = () => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }
 
   const appView = location.pathname.endsWith('/data')
     ? 'data'
@@ -1157,6 +1180,7 @@ function ChatPage({ user, onUserChange, onToast }) {
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+    handleChatScroll()
   }, [messages, loading])
 
   useEffect(() => {
@@ -1524,7 +1548,14 @@ function ChatPage({ user, onUserChange, onToast }) {
   return (
     <section className={`chat-page ${sidebarCollapsed ? 'collapsed' : ''}`}>
       {sidebarCollapsed && (
-        <aside className="chat-collapsed-rail">
+        <aside
+          className="chat-collapsed-rail"
+          onClick={(e) => {
+            if (e.target === e.currentTarget || e.target.classList.contains('rail-spacer')) {
+              setSidebarCollapsed(false)
+            }
+          }}
+        >
           <button
             className="rail-logo"
             type="button"
@@ -1586,7 +1617,11 @@ function ChatPage({ user, onUserChange, onToast }) {
             <Cloud size={17} />
           </button>
 
-          <div className="rail-spacer" />
+          <div
+            className="rail-spacer"
+            onClick={() => setSidebarCollapsed(false)}
+            title="Click to open sidebar"
+          />
 
           <div className="rail-profile-wrap">
             {profileMenuOpen && (
@@ -1734,93 +1769,108 @@ function ChatPage({ user, onUserChange, onToast }) {
 
         {appView === 'chat' && (
           <>
-            <div className="message-stack">
-              {!messages.length && !loading && (
-                <div className="chat-empty-state">
-                  <h1>How can I help, {firstName}?</h1>
-                </div>
-              )}
-
-              {messages.map((message) => (
-                <div key={message.id} className={`message ${message.role}`}>
-                  <div className="bubble">
-                    {message.role === 'assistant' ? renderAssistantText(message.text, message) : message.text}
-                    {message.action?.to && (
-                      <Link className="message-action-link" to={message.action.to}>
-                        {message.action.label || 'Open'}
-                      </Link>
-                    )}
-                    {message.role === 'assistant' && message.streaming && <span className="typing-cursor" aria-hidden="true" />}
+            <div className="chat-scroll-container" ref={chatScrollRef} onScroll={handleChatScroll}>
+              <div className="message-stack">
+                {!messages.length && !loading && (
+                  <div className="chat-empty-state">
+                    <h1>How can I help, {firstName}?</h1>
                   </div>
+                )}
 
-                  {message.role === 'assistant' && Array.isArray(message.sources) && message.sources.length > 0 && (
-                    <div
-                      className="message-sources"
-                      onMouseEnter={() => setHoveredSourceMessage(message.id)}
-                      onMouseLeave={() => setHoveredSourceMessage(null)}
-                    >
-                      <button
-                        type="button"
-                        className={`source-trigger ${expandedSourceMessages.has(message.id) ? 'open' : ''}`}
-                        onClick={() => toggleMessageSources(message.id)}
-                      >
-                        source
-                      </button>
-
-                      {hoveredSourceMessage === message.id && !expandedSourceMessages.has(message.id) && (
-                        <div className="source-hover-preview">
-                          {message.sources.slice(0, 3).map((source, sourceIndex) => {
-                            const index = Number(source.index || sourceIndex + 1)
-                            const fullText = String(source.text || '')
-                            const previewText = String(source.preview || fullText.slice(0, 120))
-                            return (
-                              <p key={`${message.id}-preview-${index}`}>
-                                <strong>[{index}]</strong> {previewText}
-                              </p>
-                            )
-                          })}
-                        </div>
+                {messages.map((message) => (
+                  <div key={message.id} className={`message ${message.role}`}>
+                    <div className="bubble">
+                      {message.role === 'assistant' ? renderAssistantText(message.text, message) : message.text}
+                      {message.action?.to && (
+                        <Link className="message-action-link" to={message.action.to}>
+                          {message.action.label || 'Open'}
+                        </Link>
                       )}
-
-                      {expandedSourceMessages.has(message.id) && (
-                        <div className="source-cards">
-                          {message.sources.map((source, sourceIndex) => {
-                            const index = Number(source.index || sourceIndex + 1)
-                            const highlighted = hoveredCitation?.messageId === message.id
-                              && Number(hoveredCitation.sourceIndex) === index
-                            const fullText = String(source.text || '')
-
-                            return (
-                              <article key={`${message.id}-${index}`} className={`source-card ${highlighted ? 'highlighted' : ''}`}>
-                                <header>
-                                  <span className="source-index">[{index}]</span>
-                                  {source.link ? (
-                                    <a href={source.link} target="_blank" rel="noreferrer">{source.title || source.source}</a>
-                                  ) : (
-                                    <strong>{source.title || source.source}</strong>
-                                  )}
-                                </header>
-                                <p>{fullText}</p>
-                                <div className="source-meta-row">
-                                  <small>Relevance: {Number(source.score || 0).toFixed(3)}</small>
-                                </div>
-                              </article>
-                            )
-                          })}
-                        </div>
-                      )}
+                      {message.role === 'assistant' && message.streaming && <span className="typing-cursor" aria-hidden="true" />}
                     </div>
-                  )}
 
-                  <span>{message.role === 'user' ? 'User' : 'RAGKNO AI'} • {message.ts}</span>
-                </div>
-              ))}
+                    {message.role === 'assistant' && Array.isArray(message.sources) && message.sources.length > 0 && (
+                      <div className="message-sources">
+                        <div
+                          className="source-trigger-wrap"
+                          onMouseEnter={() => setHoveredSourceMessage(message.id)}
+                          onMouseLeave={() => setHoveredSourceMessage(null)}
+                        >
+                          <button
+                            type="button"
+                            className={`source-trigger ${expandedSourceMessages.has(message.id) ? 'open' : ''}`}
+                            onClick={() => toggleMessageSources(message.id)}
+                          >
+                            Source
+                          </button>
 
-              {error && <p className="notice">{error}</p>}
-              <div ref={bottomRef} />
+                          {hoveredSourceMessage === message.id && !expandedSourceMessages.has(message.id) && (
+                            <div className="source-hover-preview">
+                              {message.sources.slice(0, 3).map((source, sourceIndex) => {
+                                const index = Number(source.index || sourceIndex + 1)
+                                const fullText = String(source.text || '')
+                                const previewText = String(source.preview || fullText.slice(0, 120))
+                                return (
+                                  <p key={`${message.id}-preview-${index}`}>
+                                    <strong>[{index}]</strong> {previewText}
+                                  </p>
+                                )
+                              })}
+                            </div>
+                          )}
+                        </div>
+
+                        {expandedSourceMessages.has(message.id) && (
+                          <div className="source-cards">
+                            {message.sources.map((source, sourceIndex) => {
+                              const index = Number(source.index || sourceIndex + 1)
+                              const highlighted = hoveredCitation?.messageId === message.id
+                                && Number(hoveredCitation.sourceIndex) === index
+                              const fullText = String(source.text || '')
+
+                              return (
+                                <article key={`${message.id}-${index}`} className={`source-card ${highlighted ? 'highlighted' : ''}`}>
+                                  <header>
+                                    <span className="source-index">[{index}]</span>
+                                    {source.link ? (
+                                      <a href={source.link} target="_blank" rel="noreferrer">{source.title || source.source}</a>
+                                    ) : (
+                                      <strong>{source.title || source.source}</strong>
+                                    )}
+                                  </header>
+                                  <p>{fullText}</p>
+                                  <div className="source-meta-row">
+                                    <small>Relevance: {Number(source.score || 0).toFixed(3)}</small>
+                                  </div>
+                                </article>
+                              )
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    <span>{message.role === 'user' ? message.ts : `Ragkno • ${message.ts}`}</span>
+                  </div>
+                ))}
+
+                {error && <p className="notice">{error}</p>}
+                <div ref={bottomRef} />
+              </div>
             </div>
 
             <div className="chat-composer-container">
+              {showScrollBottom && (
+                <button
+                  type="button"
+                  className="scroll-to-bottom-btn"
+                  onClick={scrollToBottom}
+                  aria-label="Scroll to bottom"
+                  title="Scroll to bottom"
+                >
+                  <ArrowDown size={15} strokeWidth={2.2} />
+                </button>
+              )}
               <form className="chat-input-row" onSubmit={sendMessage}>
                 <button
                   type="button"
@@ -1957,7 +2007,7 @@ function ChatPage({ user, onUserChange, onToast }) {
                 </div>
               </form>
 
-              <p className="chat-disclaimer">{t('disclaimer') || 'RagKno can make mistakes. Verify critical information.'}</p>
+              <p className="chat-disclaimer">{t('disclaimer') || 'Ragkno can make mistakes. verify important info.'}</p>
             </div>
           </>
         )}
