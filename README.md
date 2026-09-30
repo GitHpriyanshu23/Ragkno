@@ -188,4 +188,4 @@ python evaluation/ragas_eval.py --dataset evaluation/testset.sample.json --user-
 
 ## License
 
-This project is for educational and development use. Add your preferred license before public distribution.
+Apache License 2.0
