@@ -84,6 +84,8 @@ class RAGSearch:
 
         # Optional semantic reranker for domain-agnostic retrieval quality.
         self.reranker_model = os.getenv("RAG_RERANKER_MODEL", "cross-encoder/ms-marco-MiniLM-L-6-v2")
+        self.reranker_device = os.getenv("RAG_RERANKER_DEVICE", "cpu").strip().lower() or "cpu"
+        self.reranker_batch_size = max(1, min(32, int(os.getenv("RAG_RERANKER_BATCH_SIZE", "8"))))
         self.reranker = None
         self._reranker_load_failed = False
 
@@ -328,8 +330,8 @@ class RAGSearch:
             return None
 
         try:
-            self.reranker = CrossEncoder(self.reranker_model)
-            print(f"[INFO] Semantic reranker initialized: {self.reranker_model}")
+            self.reranker = CrossEncoder(self.reranker_model, device=self.reranker_device)
+            print(f"[INFO] Semantic reranker initialized: {self.reranker_model} on {self.reranker_device}")
             return self.reranker
         except Exception as err:
             self._reranker_load_failed = True
@@ -601,7 +603,11 @@ class RAGSearch:
             pairs.append((query, text[:2500]))
 
         try:
-            ce_scores = reranker.predict(pairs)
+            ce_scores = reranker.predict(
+                pairs,
+                batch_size=getattr(self, "reranker_batch_size", 8),
+                show_progress_bar=False,
+            )
         except Exception as err:
             print(f"[WARN] Reranker inference failed, using vector order: {err}")
             ordered = sorted(

@@ -22,9 +22,10 @@ export default function SiteFooter() {
           </div>
           <div className="footer-col">
             <h4>Resources</h4>
+            <Link to="/docs">Documentation</Link>
             <Link to="/#how-it-works">How it works</Link>
             <Link to="/#faq">FAQ</Link>
-            <a href="https://github.com" target="_blank" rel="noopener noreferrer">GitHub</a>
+            <a href="https://github.com/GitHpriyanshu23/Ragkno" target="_blank" rel="noopener noreferrer">GitHub</a>
           </div>
           <div className="footer-col">
             <h4>Legal</h4>

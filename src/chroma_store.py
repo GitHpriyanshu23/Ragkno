@@ -20,9 +20,10 @@ class ChromaVectorStore:
         os.makedirs(self.persist_dir, exist_ok=True)
         self.collection_name = collection_name
         self.embedding_model = embedding_model
+        self.embedding_device = os.getenv("RAG_EMBEDDING_DEVICE", "cpu").strip().lower() or "cpu"
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
-        self.model = SentenceTransformer(embedding_model) if load_model else None
+        self.model = SentenceTransformer(embedding_model, device=self.embedding_device) if load_model else None
         self.client = chromadb.PersistentClient(path=self.persist_dir, settings=Settings(anonymized_telemetry=False))
         self.collection = self.client.get_or_create_collection(name=self.collection_name, metadata={"hnsw:space": "cosine"})
 
@@ -151,7 +152,18 @@ class ChromaVectorStore:
     def query(self, query_text: str, top_k: int, user_id: str, source_ids: Optional[List[str]] = None) -> List[Dict[str, Any]]:
         if self.model is None:
             raise RuntimeError("Embedding model is not loaded")
-        return self.search(self.model.encode([query_text]).tolist(), top_k, user_id, source_ids)
+        try:
+            embedding = self.model.encode([query_text], device=self.embedding_device)
+        except RuntimeError as exc:
+            detail = str(exc).lower()
+            accelerator_oom = "out of memory" in detail and any(name in detail for name in ("mps", "cuda"))
+            if not accelerator_oom or self.embedding_device == "cpu":
+                raise
+            print(f"[WARN] {self.embedding_device.upper()} embedding memory exhausted; retrying on CPU")
+            self.embedding_device = "cpu"
+            self.model.to("cpu")
+            embedding = self.model.encode([query_text], device="cpu")
+        return self.search(embedding.tolist(), top_k, user_id, source_ids)
 
     def search(self, query_embedding: Any, top_k: int, user_id: str, source_ids: Optional[List[str]] = None) -> List[Dict[str, Any]]:
         emb_list = query_embedding.tolist() if isinstance(query_embedding, np.ndarray) else list(query_embedding)

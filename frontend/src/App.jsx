@@ -67,6 +67,7 @@ import DotGrid from './components/DotGrid.jsx'
 import brandLogo from './assets/figma-logo-mark.svg'
 import { useI18n } from './lib/i18n.jsx'
 import { parseMarkdownTable } from './lib/markdownTable.js'
+import useHomepageReveal from './lib/useHomepageReveal.js'
 import heroImage from './assets/ragkno-hero.webp'
 import serverRacksImage from './assets/server-racks.png'
 import serverCablesImage from './assets/server-cables.png'
@@ -79,6 +80,7 @@ import UseCasesSection from './components/landing/UseCasesSection.jsx'
 import FrequentlyAskedQuestions from './components/landing/FrequentlyAskedQuestions.jsx'
 import AuthPage from './components/AuthPage.jsx'
 import LegalPage from './components/LegalPage.jsx'
+import DocsPage from './components/DocsPage.jsx'
 import ChatErrorBoundary from './components/ChatErrorBoundary.jsx'
 import SiteFooter from './components/SiteFooter.jsx'
 
@@ -159,6 +161,7 @@ function AppShell({ children, toasts, onDismissToast }) {
                 <nav className="top-links" aria-label="Primary navigation">
                   <Link to="/#capabilities" className="top-link">Features</Link>
                   <Link to="/#how-it-works" className="top-link">How it works</Link>
+                  <Link to="/docs" className="top-link">Docs</Link>
                   <Link to="/#faq" className="top-link">FAQ</Link>
                 </nav>
                 <div className="top-actions">
@@ -191,6 +194,7 @@ function AppShell({ children, toasts, onDismissToast }) {
                   <div className="mobile-menu-links">
                     <Link to="/#capabilities" className="mobile-menu-link" onClick={() => setMobileOpen(false)}>Features</Link>
                     <Link to="/#how-it-works" className="mobile-menu-link" onClick={() => setMobileOpen(false)}>How it works</Link>
+                    <Link to="/docs" className="mobile-menu-link" onClick={() => setMobileOpen(false)}>Docs</Link>
                     <Link to="/#faq" className="mobile-menu-link" onClick={() => setMobileOpen(false)}>FAQ</Link>
                   </div>
                   <div className="mobile-menu-actions">
@@ -245,10 +249,12 @@ function AppShell({ children, toasts, onDismissToast }) {
 }
 
 function HomePage() {
+  const homeRef = useRef(null)
   const words = useMemo(() => ['Docs', 'Links', 'PDFs'], [])
   const [wordIndex, setWordIndex] = useState(0)
 
   const currentWord = words[wordIndex]
+  useHomepageReveal(homeRef)
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -259,9 +265,9 @@ function HomePage() {
   }, [words.length])
 
   return (
-    <>
+    <div className="home-page" ref={homeRef}>
       <section className="hero-section" data-nav-theme="dark">
-        <img className="hero-image" src={heroImage} alt="Open field landscape representing an accessible knowledge workspace" />
+        <img className="hero-image" src={heroImage} alt="Open field landscape representing an accessible knowledge workspace" fetchPriority="high" />
         <div className="hero-overlay" aria-hidden="true" />
         <div className="hero-grid">
           <div className="hero-copy-block">
@@ -277,7 +283,7 @@ function HomePage() {
             </p>
             <div className="hero-actions">
               <Link to="/data" className="btn-primary-solid">Get Started <ArrowRight size={15} /></Link>
-              <Link to="/chat" className="btn-glass">View Documentation</Link>
+              <Link to="/docs" className="btn-glass">View Documentation</Link>
             </div>
           </div>
         </div>
@@ -343,7 +349,7 @@ function HomePage() {
       </section>
 
       <SiteFooter />
-    </>
+    </div>
   )
 }
 
@@ -2595,6 +2601,7 @@ function LenisScrollController() {
       duration: 1.05,
       easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
       smoothWheel: true,
+      allowNestedScroll: true,
     })
 
     let frame = 0
@@ -2722,6 +2729,7 @@ export default function App() {
             element={user ? <Navigate to="/chat" replace /> : <AuthPage onUserChange={setUser} onToast={pushToast} />}
           />
           <Route path="/privacy" element={<LegalPage kind="privacy" />} />
+          <Route path="/docs" element={<DocsPage />} />
           <Route path="/terms" element={<LegalPage kind="terms" />} />
           <Route path="/cookies" element={<LegalPage kind="cookies" />} />
           <Route path="/data" element={<Navigate to="/chat/data" replace />} />

@@ -1,3 +1,4 @@
+import os
 import re
 from typing import List, Any
 
@@ -23,8 +24,9 @@ class EmbeddingPipeline:
         self.parent_chunk_overlap = parent_chunk_overlap
         self.semantic_threshold = semantic_threshold
         self.semantic_min_chars = semantic_min_chars
-        self.model = SentenceTransformer(model_name)
-        print(f"[INFO] Loaded embedding model : {model_name}")
+        self.device = os.getenv("RAG_EMBEDDING_DEVICE", "cpu").strip().lower() or "cpu"
+        self.model = SentenceTransformer(model_name, device=self.device)
+        print(f"[INFO] Loaded embedding model: {model_name} on {self.device}")
 
     @staticmethod
     def _split_sentences(text: str) -> list[str]:
@@ -38,7 +40,7 @@ class EmbeddingPipeline:
         sentences = self._split_sentences(text)
         if not sentences:
             return []
-        sentence_embeddings = self.model.encode(sentences) if len(sentences) > 1 else []
+        sentence_embeddings = self.model.encode(sentences, device=self.device) if len(sentences) > 1 else []
         chunks: list[str] = []
         current_sentences = [sentences[0]]
         current_len = len(sentences[0])
@@ -118,6 +120,6 @@ class EmbeddingPipeline:
     def embed_chunks(self, chunks: List[Any]) -> np.ndarray:
         texts = [chunk.page_content for chunk in chunks]
         print(f"[INFO] GEnerating embeddings for {len(texts)} chunks")
-        embeddings = self.model.encode(texts, show_progress_bar = True)
+        embeddings = self.model.encode(texts, show_progress_bar=True, device=self.device)
         print(f"[INFO] Embeddigns shape : {embeddings.shape}")
         return embeddings

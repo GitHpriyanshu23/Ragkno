@@ -27,18 +27,24 @@ function BringScene({ on }) {
       <img
         src={pdfIcon}
         alt="PDF"
+        loading="lazy"
+        decoding="async"
         className="hw-bring-doc"
         style={{ '--r': '-10deg', '--x': '0px' }}
       />
       <img
         src={docxIcon}
         alt="DOCX"
+        loading="lazy"
+        decoding="async"
         className="hw-bring-doc"
         style={{ '--r': '7deg', '--x': '18px' }}
       />
       <img
         src={mdIcon}
         alt="MD"
+        loading="lazy"
+        decoding="async"
         className="hw-bring-doc"
         style={{ '--r': '-3deg', '--x': '8px' }}
       />

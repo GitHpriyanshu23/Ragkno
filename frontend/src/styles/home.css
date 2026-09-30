@@ -1875,6 +1875,35 @@ section {
   gap: 10px;
 }
 
+/* Below-the-fold content stays in the document flow and reveals on entry. */
+.home-page .scroll-reveal {
+  opacity: 0;
+  transform: translate3d(0, 22px, 0) scale(.992);
+  filter: blur(3px);
+  transition:
+    opacity .56s cubic-bezier(.22, 1, .36, 1),
+    transform .56s cubic-bezier(.22, 1, .36, 1),
+    filter .5s ease;
+  transition-delay: var(--reveal-delay, 0ms);
+  will-change: opacity, transform, filter;
+}
+
+.home-page .scroll-reveal.is-visible {
+  opacity: 1;
+  transform: translate3d(0, 0, 0) scale(1);
+  filter: blur(0);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .home-page .scroll-reveal,
+  .home-page .scroll-reveal.is-visible {
+    opacity: 1;
+    transform: none;
+    filter: none;
+    transition: none;
+  }
+}
+
 .footer-col h4 {
   margin: 0 0 2px;
   font-family: Inter, Arial, sans-serif !important;

@@ -21,6 +21,8 @@ function NotionIcon() {
     <img
       src={notionLogo}
       alt="Notion"
+      loading="lazy"
+      decoding="async"
       className="bx-notion-icon"
       width={22}
       height={22}

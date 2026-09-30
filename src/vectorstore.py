@@ -14,7 +14,8 @@ class FaissVectorStore:
         self.index = None
         self.metadata = []
         self.embedding_model = embedding_model
-        self.model = SentenceTransformer(embedding_model)
+        self.embedding_device = os.getenv("RAG_EMBEDDING_DEVICE", "cpu").strip().lower() or "cpu"
+        self.model = SentenceTransformer(embedding_model, device=self.embedding_device)
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
         print(f"[INFO] Loaded embedding model: {embedding_model}")
@@ -121,7 +122,7 @@ class FaissVectorStore:
 
     def query(self, query_text: str, top_k: int = 5):
         print(f"[INFO] Querying vector store for: '{query_text}'")
-        query_emb = self.model.encode([query_text]).astype('float32')
+        query_emb = self.model.encode([query_text], device=self.embedding_device).astype('float32')
         return self.search(query_emb, top_k=top_k)
 
     def _normalize_source_key(self, source: str) -> str:
@@ -169,7 +170,7 @@ class FaissVectorStore:
                     os.remove(path)
             return removed_count
 
-        embeddings = self.model.encode(kept_texts).astype('float32')
+        embeddings = self.model.encode(kept_texts, device=self.embedding_device).astype('float32')
         dim = embeddings.shape[1]
         self.index = faiss.IndexFlatL2(dim)
         self.index.add(embeddings)

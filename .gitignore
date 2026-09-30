@@ -21,6 +21,12 @@ venv/
 .env.*
 !.env.example
 token.json
+credentials*.json
+client_secret*.json
+*.pem
+*.key
+*.p12
+*.pfx
 
 # Logs
 *.log
@@ -36,16 +42,19 @@ frontend/dist/
 frontend/.vite/
 
 # Runtime data artifacts
-data/chat_memory.sqlite3
-data/vector_store/
+data/
+uploads/
+uploaded_files/
+*.db
+*.sqlite
+*.sqlite3
+chroma_store/
+backups/
 faiss_store/
 
 # Notebook outputs (optional)
 notebook/.ipynb_checkpoints/
 
-notebook
-data
+notebook/
 /app.py
 /main.py
-chroma_store/
-backups/

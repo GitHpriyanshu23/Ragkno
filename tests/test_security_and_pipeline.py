@@ -286,6 +286,55 @@ def test_source_title_repairs_mojibake_en_dash():
     assert RAGSearch._repair_mojibake("Updated Draft Red Herring Prospectus â€“ I") == "Updated Draft Red Herring Prospectus – I"
 
 
+def test_query_embedding_retries_on_cpu_after_mps_oom(monkeypatch):
+    import numpy as np
+    from src.chroma_store import ChromaVectorStore
+
+    class FakeModel:
+        def __init__(self):
+            self.calls = []
+            self.moved_to = None
+
+        def encode(self, _texts, device=None):
+            self.calls.append(device)
+            if device == "mps":
+                raise RuntimeError("MPS backend out of memory")
+            return np.array([[0.1, 0.2]], dtype=np.float32)
+
+        def to(self, device):
+            self.moved_to = device
+
+    store = ChromaVectorStore.__new__(ChromaVectorStore)
+    store.model = FakeModel()
+    store.embedding_device = "mps"
+    monkeypatch.setattr(store, "search", lambda embedding, *_args: embedding)
+
+    assert store.query("question", 5, "alice") == [[0.10000000149011612, 0.20000000298023224]]
+    assert store.model.calls == ["mps", "cpu"]
+    assert store.model.moved_to == "cpu"
+    assert store.embedding_device == "cpu"
+
+
+def test_reranker_uses_configured_safe_device(monkeypatch):
+    from src.search import RAGSearch
+
+    captured = {}
+
+    class FakeCrossEncoder:
+        def __init__(self, model, device=None):
+            captured.update(model=model, device=device)
+
+    monkeypatch.setattr("src.search.CrossEncoder", FakeCrossEncoder)
+    rag = RAGSearch.__new__(RAGSearch)
+    rag.reranker = None
+    rag._reranker_load_failed = False
+    rag.reranker_model = "test-reranker"
+    rag.reranker_device = "cpu"
+
+    assert isinstance(rag._ensure_reranker(), FakeCrossEncoder)
+    assert captured == {"model": "test-reranker", "device": "cpu"}
+
+
 def test_long_sentence_is_bounded():
     from src.embedding import EmbeddingPipeline
 
