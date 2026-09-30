@@ -2,11 +2,12 @@ import os
 import json
 import time
 import uuid
+import hashlib
 import urllib.parse
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 from dotenv import load_dotenv
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.engine import Engine
 
 load_dotenv()
@@ -74,8 +75,12 @@ class Database:
                 email TEXT UNIQUE NOT NULL,
                 name TEXT,
                 picture TEXT,
+                password_hash TEXT,
+                auth_provider TEXT NOT NULL DEFAULT 'google',
+                email_verified BOOLEAN NOT NULL DEFAULT FALSE,
                 created_at {ts_def},
-                last_login_at {ts_def}
+                last_login_at {ts_def},
+                updated_at {ts_def}
             );
             """,
             f"""
@@ -152,6 +157,21 @@ class Database:
                 created_at {ts_def}
             );
             """,
+            f"""
+            CREATE TABLE IF NOT EXISTS query_requests (
+                request_id TEXT NOT NULL,
+                user_id TEXT NOT NULL,
+                thread_id TEXT NOT NULL,
+                query_hash TEXT,
+                status TEXT NOT NULL DEFAULT 'running',
+                answer TEXT,
+                sources_json TEXT NOT NULL DEFAULT '[]',
+                error TEXT,
+                created_at {ts_def},
+                updated_at {ts_def},
+                PRIMARY KEY (request_id, user_id)
+            );
+            """,
         ]
 
         indexes = [
@@ -159,13 +179,28 @@ class Database:
             "CREATE INDEX IF NOT EXISTS idx_messages_thread ON messages(thread_id);",
             "CREATE INDEX IF NOT EXISTS idx_sources_user ON user_sources(user_id);",
             "CREATE INDEX IF NOT EXISTS idx_sources_key ON user_sources(user_id, source_key);",
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_sources_identity ON user_sources(user_id, source_type, source_key);",
             "CREATE INDEX IF NOT EXISTS idx_mem_user_session ON chat_memory_turns(user_id, session_id);",
             "CREATE INDEX IF NOT EXISTS idx_feedbacks_user ON feedbacks(user_id);",
+            "CREATE INDEX IF NOT EXISTS idx_query_requests_thread ON query_requests(user_id, thread_id);",
         ]
 
         with self.engine.begin() as conn:
             for stmt in schema_statements:
                 conn.execute(text(stmt.strip()))
+            query_columns = {column["name"] for column in inspect(conn).get_columns("query_requests")}
+            if "query_hash" not in query_columns:
+                conn.execute(text("ALTER TABLE query_requests ADD COLUMN query_hash TEXT"))
+            user_columns = {column["name"] for column in inspect(conn).get_columns("users")}
+            user_migrations = {
+                "password_hash": "ALTER TABLE users ADD COLUMN password_hash TEXT",
+                "auth_provider": "ALTER TABLE users ADD COLUMN auth_provider TEXT NOT NULL DEFAULT 'google'",
+                "email_verified": "ALTER TABLE users ADD COLUMN email_verified BOOLEAN NOT NULL DEFAULT FALSE",
+                "updated_at": f"ALTER TABLE users ADD COLUMN updated_at {ts_def}",
+            }
+            for column, statement in user_migrations.items():
+                if column not in user_columns:
+                    conn.execute(text(statement))
             for idx in indexes:
                 conn.execute(text(idx.strip()))
 
@@ -176,7 +211,7 @@ class Database:
     # -----------------------------------------------------------------------
     def upsert_user(self, user_info: Dict[str, Any]) -> Dict[str, Any]:
         user_id = str(user_info.get("sub") or user_info.get("id") or "").strip()
-        email = str(user_info.get("email") or "").strip()
+        email = str(user_info.get("email") or "").strip().casefold()
         if not user_id or not email:
             raise ValueError("user_id and email are required for upsert_user.")
 
@@ -185,16 +220,19 @@ class Database:
 
         with self.engine.begin() as conn:
             row = conn.execute(
-                text("SELECT id, email, name, picture FROM users WHERE id = :id OR email = :email"),
+                text("SELECT id, email, name, picture, auth_provider FROM users WHERE id = :id OR email = :email"),
                 {"id": user_id, "email": email},
             ).mappings().first()
 
             if row:
+                if row["id"] != user_id:
+                    raise ValueError("An account with this email already uses a different sign-in method.")
                 conn.execute(
                     text(
                         """
                         UPDATE users
-                        SET name = :name, picture = :picture, last_login_at = CURRENT_TIMESTAMP
+                        SET name = :name, picture = :picture, auth_provider = 'google',
+                            email_verified = TRUE, last_login_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
                         WHERE id = :id
                         """
                     ),
@@ -204,19 +242,48 @@ class Database:
                 conn.execute(
                     text(
                         """
-                        INSERT INTO users (id, email, name, picture)
-                        VALUES (:id, :email, :name, :picture)
+                        INSERT INTO users (id, email, name, picture, auth_provider, email_verified)
+                        VALUES (:id, :email, :name, :picture, 'google', TRUE)
                         """
                     ),
                     {"id": user_id, "email": email, "name": name, "picture": picture},
                 )
 
-        return {"id": user_id, "email": email, "name": name, "picture": picture}
+        return {"id": user_id, "email": email, "name": name, "picture": picture, "provider": "google", "email_verified": True}
+
+    def create_password_user(self, name: str, email: str, password_hash: str) -> Dict[str, Any]:
+        """Create a local account.  The caller supplies a bcrypt hash, never a password."""
+        normalized_email = email.strip().casefold()
+        user_id = f"usr_{uuid.uuid4().hex}"
+        with self.engine.begin() as conn:
+            existing = conn.execute(text("SELECT id FROM users WHERE email = :email"), {"email": normalized_email}).first()
+            if existing:
+                raise ValueError("email_exists")
+            conn.execute(text("""
+                INSERT INTO users (id, email, name, password_hash, auth_provider, email_verified, last_login_at)
+                VALUES (:id, :email, :name, :password_hash, 'password', FALSE, CURRENT_TIMESTAMP)
+            """), {"id": user_id, "email": normalized_email, "name": name, "password_hash": password_hash})
+        return {"id": user_id, "email": normalized_email, "name": name, "picture": "", "provider": "password", "email_verified": False}
+
+    def get_password_user_by_email(self, email: str) -> Optional[Dict[str, Any]]:
+        with self.engine.connect() as conn:
+            row = conn.execute(text("""
+                SELECT id, email, name, picture, password_hash, auth_provider, email_verified
+                FROM users WHERE email = :email
+            """), {"email": email.strip().casefold()}).mappings().first()
+            return dict(row) if row else None
+
+    def record_password_login(self, user_id: str) -> None:
+        with self.engine.begin() as conn:
+            conn.execute(text("""
+                UPDATE users SET last_login_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+                WHERE id = :id
+            """), {"id": user_id})
 
     def get_user(self, user_id: str) -> Optional[Dict[str, Any]]:
         with self.engine.connect() as conn:
             row = conn.execute(
-                text("SELECT id, email, name, picture FROM users WHERE id = :id"),
+                text("SELECT id, email, name, picture, auth_provider, email_verified FROM users WHERE id = :id"),
                 {"id": user_id},
             ).mappings().first()
             return dict(row) if row else None
@@ -345,6 +412,8 @@ class Database:
     # Message Operations
     # -----------------------------------------------------------------------
     def get_thread_messages(self, thread_id: str, user_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        if not user_id:
+            raise ValueError("user_id is required to read thread messages")
         sql = "SELECT id, thread_id, user_id, role, text, sources_json, action_json, created_at FROM messages WHERE thread_id = :thread_id"
         params: Dict[str, Any] = {"thread_id": thread_id}
         if user_id:
@@ -398,21 +467,12 @@ class Database:
         with self.engine.begin() as conn:
             # Ensure thread exists
             thread_row = conn.execute(
-                text("SELECT id, title FROM threads WHERE id = :id"),
-                {"id": thread_id},
+                text("SELECT id, title FROM threads WHERE id = :id AND user_id = :user_id"),
+                {"id": thread_id, "user_id": user_id},
             ).mappings().first()
 
             if not thread_row:
-                initial_title = text_content.strip()[:48] if role == "user" else "New Chat"
-                conn.execute(
-                    text(
-                        """
-                        INSERT INTO threads (id, user_id, title, created_at, updated_at)
-                        VALUES (:id, :user_id, :title, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-                        """
-                    ),
-                    {"id": thread_id, "user_id": user_id, "title": initial_title or "New Chat"},
-                )
+                raise PermissionError("Thread does not exist or is not owned by this user")
             else:
                 # If first user message and title is "New Chat", auto-update title
                 if role == "user" and thread_row["title"] == "New Chat":
@@ -456,6 +516,65 @@ class Database:
             "action": action,
         }
 
+    def complete_query_exchange(
+        self,
+        request_id: str,
+        thread_id: str,
+        user_id: str,
+        user_text: str,
+        assistant_text: str,
+        sources: Optional[List[Any]] = None,
+    ) -> None:
+        """Atomically save one successful exchange and mark its request complete."""
+        sources_json = json.dumps(sources or [], ensure_ascii=False)
+        with self.engine.begin() as conn:
+            thread = conn.execute(
+                text("SELECT id, title FROM threads WHERE id = :id AND user_id = :user_id"),
+                {"id": thread_id, "user_id": user_id},
+            ).mappings().first()
+            if not thread:
+                raise PermissionError("Thread does not exist or is not owned by this user")
+
+            status = conn.execute(
+                text("SELECT status FROM query_requests WHERE request_id = :request_id AND user_id = :user_id AND thread_id = :thread_id"),
+                {"request_id": request_id, "user_id": user_id, "thread_id": thread_id},
+            ).mappings().first()
+            if not status or status["status"] != "running":
+                raise RuntimeError("Query request is not in a savable state")
+
+            if thread["title"] == "New Chat" and user_text.strip():
+                conn.execute(
+                    text("UPDATE threads SET title = :title, updated_at = CURRENT_TIMESTAMP WHERE id = :id AND user_id = :user_id"),
+                    {"title": user_text.strip()[:48], "id": thread_id, "user_id": user_id},
+                )
+            else:
+                conn.execute(
+                    text("UPDATE threads SET updated_at = CURRENT_TIMESTAMP WHERE id = :id AND user_id = :user_id"),
+                    {"id": thread_id, "user_id": user_id},
+                )
+
+            for message_id, role, content, message_sources in (
+                (f"{request_id}:user", "user", user_text, "[]"),
+                (f"{request_id}:assistant", "assistant", assistant_text, sources_json),
+            ):
+                conn.execute(
+                    text("""
+                        INSERT INTO messages (id, thread_id, user_id, role, text, sources_json, created_at)
+                        VALUES (:id, :thread_id, :user_id, :role, :text, :sources, CURRENT_TIMESTAMP)
+                    """),
+                    {"id": message_id, "thread_id": thread_id, "user_id": user_id, "role": role, "text": content, "sources": message_sources},
+                )
+
+            conn.execute(
+                text("""
+                    UPDATE query_requests
+                    SET status = 'complete', answer = :answer, sources_json = :sources,
+                        error = NULL, updated_at = CURRENT_TIMESTAMP
+                    WHERE request_id = :request_id AND user_id = :user_id AND thread_id = :thread_id
+                """),
+                {"request_id": request_id, "user_id": user_id, "thread_id": thread_id, "answer": assistant_text, "sources": sources_json},
+            )
+
     # -----------------------------------------------------------------------
     # User Sources Operations (File, URL, Drive)
     # -----------------------------------------------------------------------
@@ -467,10 +586,10 @@ class Database:
         source_type: str = "file",
         chunk_count: int = 0,
     ) -> Dict[str, Any]:
-        normalized_key = str(source_key or "").strip().lower().rstrip("/")
+        normalized_key = str(source_key or "").strip()
         name = str(source_name or source_key).strip()
         uid = str(user_id or "system").strip()
-        sid = f"src_{uuid.uuid4().hex[:12]}"
+        sid = "src_" + hashlib.sha256(f"{uid}\0{source_type}\0{normalized_key}".encode("utf-8")).hexdigest()[:32]
 
         with self.engine.begin() as conn:
             existing = conn.execute(
@@ -483,13 +602,13 @@ class Database:
                     text(
                         """
                         UPDATE user_sources
-                        SET chunk_count = chunk_count + :chunks, source_name = :name
+                        SET chunk_count = :chunks, source_name = :name, source_type = :type
                         WHERE id = :id
                         """
                     ),
-                    {"id": existing["id"], "chunks": chunk_count, "name": name},
+                    {"id": existing["id"], "chunks": chunk_count, "name": name, "type": source_type},
                 )
-                return {"id": existing["id"], "source_key": normalized_key, "source_name": name, "chunk_count": existing["chunk_count"] + chunk_count}
+                return {"id": existing["id"], "source_key": normalized_key, "source_name": name, "chunk_count": chunk_count}
             else:
                 conn.execute(
                     text(
@@ -512,9 +631,10 @@ class Database:
     def get_user_sources(self, user_id: Optional[str] = None) -> List[Dict[str, Any]]:
         sql = "SELECT id, user_id, source_key, source_name, source_type, chunk_count, created_at FROM user_sources"
         params: Dict[str, Any] = {}
-        if user_id and user_id.strip() not in ("*", "all"):
-            sql += " WHERE user_id = :user_id OR user_id = 'system'"
-            params["user_id"] = user_id.strip()
+        if not user_id or user_id.strip() in ("*", "all"):
+            return []
+        sql += " WHERE user_id = :user_id"
+        params["user_id"] = user_id.strip()
         sql += " ORDER BY created_at DESC"
 
         with self.engine.connect() as conn:
@@ -522,13 +642,81 @@ class Database:
             return [dict(r) for r in rows]
 
     def delete_user_source(self, user_id: str, source_key: str) -> bool:
-        normalized_key = str(source_key or "").strip().lower().rstrip("/")
+        normalized_key = str(source_key or "").strip()
         with self.engine.begin() as conn:
             res = conn.execute(
-                text("DELETE FROM user_sources WHERE user_id = :user_id AND source_key = :key"),
+                text("DELETE FROM user_sources WHERE user_id = :user_id AND (source_key = :key OR id = :key)"),
                 {"user_id": user_id, "key": normalized_key},
             )
             return res.rowcount > 0
+
+    # -----------------------------------------------------------------------
+    # Idempotent query lifecycle
+    # -----------------------------------------------------------------------
+    def begin_query_request(self, request_id: str, user_id: str, thread_id: str, query_hash: str) -> Dict[str, Any]:
+        with self.engine.begin() as conn:
+            row = conn.execute(
+                text("SELECT * FROM query_requests WHERE request_id = :request_id AND user_id = :user_id"),
+                {"request_id": request_id, "user_id": user_id},
+            ).mappings().first()
+            if row:
+                if row.get("thread_id") != thread_id or (row.get("query_hash") and row.get("query_hash") != query_hash):
+                    return {**dict(row), "status": "conflict"}
+                if not row.get("query_hash"):
+                    conn.execute(
+                        text("UPDATE query_requests SET query_hash = :query_hash WHERE request_id = :request_id AND user_id = :user_id"),
+                        {"query_hash": query_hash, "request_id": request_id, "user_id": user_id},
+                    )
+                if row.get("status") == "failed":
+                    conn.execute(
+                        text("""
+                            UPDATE query_requests SET status = 'running', error = NULL,
+                                answer = NULL, sources_json = '[]', updated_at = CURRENT_TIMESTAMP
+                            WHERE request_id = :request_id AND user_id = :user_id
+                        """),
+                        {"request_id": request_id, "user_id": user_id},
+                    )
+                    return {**dict(row), "query_hash": query_hash, "status": "created"}
+                return dict(row)
+            conn.execute(
+                text("""
+                    INSERT INTO query_requests (request_id, user_id, thread_id, query_hash, status)
+                    VALUES (:request_id, :user_id, :thread_id, :query_hash, 'running')
+                """),
+                {"request_id": request_id, "user_id": user_id, "thread_id": thread_id, "query_hash": query_hash},
+            )
+        return {"request_id": request_id, "user_id": user_id, "thread_id": thread_id, "query_hash": query_hash, "status": "created"}
+
+    def complete_query_request(self, request_id: str, user_id: str, answer: str, sources: List[Any]) -> None:
+        with self.engine.begin() as conn:
+            conn.execute(
+                text("""
+                    UPDATE query_requests
+                    SET status = 'complete', answer = :answer, sources_json = :sources, error = NULL,
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE request_id = :request_id AND user_id = :user_id
+                """),
+                {"request_id": request_id, "user_id": user_id, "answer": answer, "sources": json.dumps(sources or [], ensure_ascii=False)},
+            )
+
+    def fail_query_request(self, request_id: str, user_id: str, error: str) -> None:
+        with self.engine.begin() as conn:
+            conn.execute(
+                text("""
+                    UPDATE query_requests
+                    SET status = 'failed', error = :error, updated_at = CURRENT_TIMESTAMP
+                    WHERE request_id = :request_id AND user_id = :user_id AND status = 'running'
+                """),
+                {"request_id": request_id, "user_id": user_id, "error": str(error)[:1000]},
+            )
+
+    def decode_query_request(self, record: Dict[str, Any]) -> Dict[str, Any]:
+        result = dict(record)
+        try:
+            result["sources"] = json.loads(result.get("sources_json") or "[]")
+        except Exception:
+            result["sources"] = []
+        return result
 
     # -----------------------------------------------------------------------
     # Chat Memory Operations (Scoped per user_id + session_id)
@@ -813,6 +1001,3 @@ class Database:
                     "created_at": r[4].isoformat() if hasattr(r[4], "isoformat") else str(r[4]),
                 })
             return results
-
-
-

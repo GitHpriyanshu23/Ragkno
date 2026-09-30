@@ -38,10 +38,7 @@ class EmbeddingPipeline:
         sentences = self._split_sentences(text)
         if not sentences:
             return []
-        if len(sentences) == 1:
-            return [sentences[0]]
-
-        sentence_embeddings = self.model.encode(sentences)
+        sentence_embeddings = self.model.encode(sentences) if len(sentences) > 1 else []
         chunks: list[str] = []
         current_sentences = [sentences[0]]
         current_len = len(sentences[0])

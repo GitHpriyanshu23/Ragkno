@@ -1,307 +1,263 @@
-// src/api.js — all backend calls go through here
-
 export const API_BASE = (import.meta.env.VITE_API_URL || '').replace(/\/+$/, '')
 const BASE = API_BASE
-
-const DEFAULT_RETRIES = 2
-const DEFAULT_RETRY_DELAY_MS = 350
+const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS'])
+let csrfToken = ''
 
 function sleep(ms) {
   return new Promise((resolve) => window.setTimeout(resolve, ms))
 }
 
-async function parseError(res, fallbackMessage) {
-  const err = await res.json().catch(() => ({}))
-  return err.detail || fallbackMessage
+async function parseError(response, fallback) {
+  const payload = await response.json().catch(() => ({}))
+  const detail = payload?.detail
+  if (typeof detail === 'string') return detail
+  if (detail && typeof detail === 'object') return detail.message || JSON.stringify(detail)
+  return fallback
 }
 
-async function fetchWithRetry(url, options = {}, config = {}) {
-  const retries = Number(config.retries ?? DEFAULT_RETRIES)
-  const retryDelayMs = Number(config.retryDelayMs ?? DEFAULT_RETRY_DELAY_MS)
+async function apiFetch(path, options = {}, config = {}) {
+  const method = String(options.method || 'GET').toUpperCase()
+  const headers = new Headers(options.headers || {})
+  if (!SAFE_METHODS.has(method) && csrfToken) headers.set('X-CSRF-Token', csrfToken)
+  const retries = SAFE_METHODS.has(method) ? Number(config.retries ?? 2) : Number(config.retries ?? 0)
+  let lastError
 
-  let lastError = null
   for (let attempt = 0; attempt <= retries; attempt += 1) {
     try {
-      const res = await fetch(url, options)
-
-      if (res.ok) {
-        return res
-      }
-
-      const shouldRetryStatus = res.status >= 500
-      if (shouldRetryStatus && attempt < retries) {
-        const delay = retryDelayMs * (2 ** attempt)
-        await sleep(delay)
+      const response = await fetch(`${BASE}${path}`, {
+        ...options,
+        method,
+        headers,
+        credentials: 'include',
+      })
+      if (response.ok) return response
+      if (response.status >= 500 && attempt < retries) {
+        await sleep(300 * (2 ** attempt))
         continue
       }
-
-      lastError = new Error(await parseError(res, `Request failed (${res.status})`))
-      throw lastError
+      throw new Error(await parseError(response, `Request failed (${response.status})`))
     } catch (error) {
       lastError = error
-      if (attempt >= retries) {
-        throw lastError
-      }
-      const delay = retryDelayMs * (2 ** attempt)
-      await sleep(delay)
+      if (error?.name === 'AbortError' || attempt >= retries) throw error
+      await sleep(300 * (2 ** attempt))
     }
   }
-
   throw lastError || new Error('Request failed')
 }
 
-export async function getAuthUrl() {
-  const res = await fetchWithRetry(`${BASE}/auth/url`)
-  if (!res.ok) throw new Error('Failed to get auth URL')
-  return res.json()   // { url: string }
+async function jsonRequest(path, options = {}, config = {}) {
+  const response = await apiFetch(path, options, config)
+  return response.json()
 }
 
-export async function getGoogleLoginUrl() {
-  const res = await fetchWithRetry(`${BASE}/app-auth/google/url`)
-  if (!res.ok) throw new Error('Failed to get login URL')
-  return res.json()   // { url: string }
+export function clearApiSession() {
+  csrfToken = ''
+}
+
+export function getGoogleLoginUrl() {
+  return jsonRequest('/app-auth/google/url', {}, { retries: 0 })
+}
+
+export async function registerUser({ name, email, password, termsAccepted }) {
+  const payload = await jsonRequest('/auth/register', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, email, password, terms_accepted: termsAccepted }),
+  })
+  return payload
+}
+
+export async function loginWithPassword({ email, password }) {
+  return jsonRequest('/auth/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password }),
+  })
 }
 
 export async function getCurrentUser() {
-  const res = await fetchWithRetry(`${BASE}/auth/me`, { credentials: 'include' }, { retries: 0 })
-  if (!res.ok) throw new Error('Failed to check login status')
-  return res.json()   // { authenticated, user }
+  const payload = await jsonRequest('/auth/me', {}, { retries: 0 })
+  csrfToken = payload?.csrf_token || ''
+  return payload
 }
 
 export async function logoutUser() {
-  const res = await fetchWithRetry(`${BASE}/auth/logout`, {
+  const payload = await jsonRequest('/auth/logout', { method: 'POST' })
+  clearApiSession()
+  return payload
+}
+
+export function getAuthUrl() { return jsonRequest('/auth/url') }
+export function getAuthStatus() { return jsonRequest('/auth/status') }
+export function getDriveFiles() { return jsonRequest('/drive/files') }
+
+export function syncDrive(fileIds = null) {
+  return jsonRequest('/drive/sync', {
     method: 'POST',
-    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ file_ids: fileIds }),
   })
-  if (!res.ok) throw new Error('Logout failed')
-  return res.json()
 }
 
-export async function getAuthStatus() {
-  const res = await fetchWithRetry(`${BASE}/auth/status`)
-  if (!res.ok) throw new Error('Failed to check auth status')
-  return res.json()   // { connected: bool }
-}
+export function disconnectDrive() { return jsonRequest('/drive/disconnect', { method: 'DELETE' }) }
 
-export async function getDriveFiles() {
-  const res = await fetchWithRetry(`${BASE}/drive/files`)
-  if (!res.ok) {
-    throw new Error(await parseError(res, 'Failed to list Drive files'))
-  }
-  return res.json()   // { files: [{id, name, mimeType}] }
-}
-
-export async function syncDrive(fileIds = null) {
-  const body = fileIds ? JSON.stringify({ file_ids: fileIds }) : undefined
-  const res = await fetchWithRetry(`${BASE}/drive/sync`, {
-    method: 'POST',
-    headers: body ? { 'Content-Type': 'application/json' } : undefined,
-    body,
-  })
-  if (!res.ok) {
-    throw new Error(await parseError(res, 'Sync failed'))
-  }
-  return res.json()   // { message, count }
-}
-
-export async function disconnectDrive() {
-  const res = await fetchWithRetry(`${BASE}/drive/disconnect`, { method: 'DELETE' })
-  if (!res.ok) throw new Error('Disconnect failed')
-  return res.json()
-}
-
-export async function ingestFiles(files) {
+export function ingestFiles(files) {
   const form = new FormData()
   files.forEach((file) => form.append('files', file))
-
-  const res = await fetchWithRetry(`${BASE}/ingest/files`, {
-    method: 'POST',
-    body: form,
-  })
-  if (!res.ok) {
-    throw new Error(await parseError(res, 'File upload failed'))
-  }
-  return res.json()
+  return jsonRequest('/ingest/files', { method: 'POST', body: form })
 }
 
-export async function ingestUrl(url) {
-  const res = await fetchWithRetry(`${BASE}/ingest/url`, {
+export function ingestUrl(url) {
+  return jsonRequest('/ingest/url', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ url }),
   })
-  if (!res.ok) {
-    throw new Error(await parseError(res, 'URL ingestion failed'))
-  }
-  return res.json()
 }
 
-export async function getIndexedSources() {
-  const res = await fetchWithRetry(`${BASE}/ingest/sources`)
-  if (!res.ok) {
-    throw new Error(await parseError(res, 'Failed to load indexed sources'))
-  }
-  return res.json()   // { count, sources: [{key, source, type}] }
-}
+export function getIndexedSources() { return jsonRequest('/ingest/sources') }
 
-export async function unindexSource(key) {
-  const res = await fetchWithRetry(`${BASE}/ingest/unindex`, {
+export function unindexSource(sourceId) {
+  return jsonRequest('/ingest/unindex', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ key }),
+    body: JSON.stringify({ source_id: sourceId }),
   })
-  if (!res.ok) {
-    throw new Error(await parseError(res, 'Failed to unindex source'))
-  }
-  return res.json()   // { ok, removed, message }
 }
 
-export async function queryRAG(query, top_k = 3, sessionId = null) {
-  const res = await fetchWithRetry(`${BASE}/query`, {
+export function getThreads() { return jsonRequest('/threads') }
+
+export function createBackendThread(title = 'New Chat', id = null) {
+  return jsonRequest('/threads', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ query, top_k, session_id: sessionId }),
+    body: JSON.stringify({ title, id }),
   })
-  if (!res.ok) {
-    throw new Error(await parseError(res, 'Query failed'))
+}
+
+export function getThreadMessages(threadId) {
+  return jsonRequest(`/threads/${encodeURIComponent(threadId)}/messages`)
+}
+
+export function renameBackendThread(threadId, title) {
+  return jsonRequest(`/threads/${encodeURIComponent(threadId)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ title }),
+  })
+}
+
+export function deleteBackendThread(threadId) {
+  return jsonRequest(`/threads/${encodeURIComponent(threadId)}`, { method: 'DELETE' })
+}
+
+function queryBody(query, options = {}) {
+  return {
+    query,
+    thread_id: options.threadId,
+    request_id: options.requestId,
+    top_k: options.topK ?? 5,
+    model: options.model || undefined,
+    use_reranker: options.useReranker ?? true,
+    language: options.language || 'auto',
+    source_ids: options.sourceIds?.length ? options.sourceIds : undefined,
   }
-  return res.json()   // { answer, query, sources }
+}
+
+export function queryRAG(query, options = {}) {
+  return jsonRequest('/query', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(queryBody(query, options)),
+    signal: options.signal,
+  })
 }
 
 function parseSSEBlock(block) {
   const lines = block.split('\n')
   let event = 'message'
   const dataLines = []
-
   for (const line of lines) {
     if (!line || line.startsWith(':')) continue
-    if (line.startsWith('event:')) {
-      event = line.slice(6).trim()
-      continue
-    }
-    if (line.startsWith('data:')) {
-      dataLines.push(line.slice(5).trim())
-    }
+    if (line.startsWith('event:')) event = line.slice(6).trim()
+    if (line.startsWith('data:')) dataLines.push(line.slice(5).trim())
   }
-
-  if (dataLines.length === 0) {
-    return null
-  }
-
-  const rawData = dataLines.join('\n')
-  let data = rawData
+  if (!dataLines.length) return null
   try {
-    data = JSON.parse(rawData)
+    return { event, data: JSON.parse(dataLines.join('\n')) }
   } catch {
-    // Keep raw string payload if not JSON.
+    throw new Error('The server returned an invalid stream event.')
   }
-
-  return { event, data }
 }
 
-export async function queryRAGStream(
-  query,
-  top_k = 3,
-  sessionId = null,
-  handlers = {},
-) {
-  const { onMeta, onToken, onDone, onError, signal } = handlers
-
-  const res = await fetchWithRetry(`${BASE}/query/stream`, {
+export async function queryRAGStream(query, options = {}, handlers = {}) {
+  const response = await apiFetch('/query/stream', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Accept: 'text/event-stream',
-    },
-    body: JSON.stringify({ query, top_k, session_id: sessionId }),
-    signal,
+    headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
+    body: JSON.stringify(queryBody(query, options)),
+    signal: handlers.signal || options.signal,
   })
+  if (!response.body) throw new Error('Streaming is unavailable.')
 
-  if (!res.ok || !res.body) {
-    throw new Error('Streaming is unavailable.')
-  }
-
-  const reader = res.body.getReader()
+  const reader = response.body.getReader()
   const decoder = new TextDecoder()
   let buffer = ''
   let donePayload = null
+  let receivedText = false
 
   while (true) {
     const { value, done } = await reader.read()
     if (done) break
-
     buffer += decoder.decode(value, { stream: true })
     const events = buffer.split('\n\n')
     buffer = events.pop() || ''
-
     for (const rawEvent of events) {
       const parsed = parseSSEBlock(rawEvent.replace(/\r/g, ''))
       if (!parsed) continue
-
-      const { event, data } = parsed
-      if (event === 'meta') {
-        onMeta?.(data)
-      } else if (event === 'token') {
-        onToken?.(data?.token || '')
-      } else if (event === 'done') {
-        donePayload = data
-        onDone?.(data)
-      } else if (event === 'error') {
-        const message = data?.message || 'Streaming failed'
-        onError?.(message)
-        throw new Error(message)
+      if (parsed.event === 'meta') handlers.onMeta?.(parsed.data)
+      if (parsed.event === 'token') {
+        receivedText = receivedText || Boolean(parsed.data?.token)
+        handlers.onToken?.(parsed.data?.token || '')
+      }
+      if (parsed.event === 'done') {
+        donePayload = parsed.data
+        handlers.onDone?.(parsed.data)
+        // The SSE event is the protocol-level completion signal. Do not keep
+        // the composer locked while waiting for a proxy/server to close its
+        // keep-alive connection after the answer is already complete.
+        await reader.cancel().catch(() => {})
+        return donePayload
+      }
+      if (parsed.event === 'error') {
+        const error = new Error(parsed.data?.message || 'Streaming failed')
+        error.interrupted = Boolean(parsed.data?.interrupted || receivedText)
+        handlers.onError?.(error)
+        throw error
       }
     }
   }
-
+  if (!donePayload) {
+    const error = new Error('The response stream ended before completion.')
+    error.interrupted = receivedText
+    throw error
+  }
   return donePayload
 }
 
-export async function resetChatMemory(sessionId) {
-  const res = await fetchWithRetry(`${BASE}/memory/reset`, {
+export function resetChatMemory(sessionId) {
+  return jsonRequest('/memory/reset', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ session_id: sessionId }),
   })
-  if (!res.ok) {
-    throw new Error(await parseError(res, 'Failed to reset chat memory'))
-  }
-  return res.json()
 }
 
-export async function deleteBackendThread(threadId) {
-  const res = await fetchWithRetry(`${BASE}/threads/${encodeURIComponent(threadId)}`, {
-    method: 'DELETE',
-  })
-  if (!res.ok) {
-    throw new Error(await parseError(res, 'Failed to delete thread'))
-  }
-  return res.json()
-}
-
-export async function submitFeedback({ rating, comment, feedback, user_id, user_email }) {
-  const content = (feedback || comment || '').trim()
-  const payload = {
-    rating: (rating || 'neutral').trim() || 'neutral',
-    feedback: content,
-    user_id: user_id || null,
-    user_email: user_email || null,
-  }
-  const res = await fetchWithRetry(`${BASE}/feedback`, {
+export function submitFeedback({ rating, comment, feedback }) {
+  return jsonRequest('/feedback', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
+    body: JSON.stringify({ rating: rating || 'neutral', feedback: (feedback || comment || '').trim() }),
   })
-  if (!res.ok) {
-    throw new Error(await parseError(res, 'Failed to submit feedback'))
-  }
-  return res.json()
 }
 
-export async function fetchFeedbacks(limit = 50) {
-  const res = await fetchWithRetry(`${BASE}/feedback?limit=${limit}`)
-  if (!res.ok) {
-    throw new Error(await parseError(res, 'Failed to fetch feedback'))
-  }
-  return res.json()
-}
+export function fetchFeedbacks(limit = 50) { return jsonRequest(`/feedback?limit=${limit}`) }

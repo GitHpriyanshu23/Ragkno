@@ -1,7 +1,12 @@
 import argparse
 import json
 import os
+import sys
 from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 from datasets import Dataset
 from dotenv import load_dotenv
@@ -9,7 +14,7 @@ from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_openai import ChatOpenAI
 from langchain_google_genai import ChatGoogleGenerativeAI
 from ragas import evaluate
-from ragas.metrics import answer_relevancy, context_precision, faithfulness
+from ragas.metrics.collections import answer_relevancy, context_precision, faithfulness
 
 from src.search import RAGSearch
 
@@ -32,10 +37,10 @@ def _load_dataset(path: Path) -> list[dict]:
     return cleaned
 
 
-def _build_eval_rows(rag: RAGSearch, rows: list[dict], top_k: int) -> list[dict]:
+def _build_eval_rows(rag: RAGSearch, rows: list[dict], top_k: int, user_id: str) -> list[dict]:
     output = []
     for row in rows:
-        result = rag.answer_with_sources(query=row["question"], top_k=top_k)
+        result = rag.answer_with_sources(query=row["question"], top_k=top_k, user_id=user_id)
         contexts = [str(source.get("text", "") or "") for source in result.get("sources", [])]
         output.append(
             {
@@ -52,9 +57,12 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Run RAGAS evaluation for the local RAG pipeline.")
     parser.add_argument("--dataset", type=str, required=True, help="Path to a JSON array test set")
     parser.add_argument("--top-k", type=int, default=3, help="Retriever top-k")
-    parser.add_argument("--persist-dir", type=str, default="faiss_store", help="Vector store directory")
+    parser.add_argument("--persist-dir", type=str, default="chroma_store", help="Chroma vector store directory")
+    parser.add_argument("--user-id", type=str, required=True, help="User whose isolated index should be evaluated")
+    parser.add_argument("--min-faithfulness", type=float, default=0.7)
+    parser.add_argument("--min-context-precision", type=float, default=0.6)
     agentrouter_key = os.getenv("AGENTROUTER_API_KEY") or os.getenv("AGENT_ROUTER_API_KEY")
-    default_model = "gpt-5.6-sol" if agentrouter_key else os.getenv("GOOGLE_LLM_MODEL", "gemma-3-12b-it")
+    default_model = "gpt-5.5" if agentrouter_key else os.getenv("GOOGLE_LLM_MODEL", "gemma-3-12b-it")
     parser.add_argument("--llm-model", type=str, default=os.getenv("AGENTROUTER_MODEL", default_model))
     args = parser.parse_args()
 
@@ -65,11 +73,11 @@ def main() -> None:
 
     questions = _load_dataset(dataset_path)
     rag = RAGSearch(persist_dir=args.persist_dir)
-    eval_rows = _build_eval_rows(rag, questions, top_k=args.top_k)
+    eval_rows = _build_eval_rows(rag, questions, top_k=args.top_k, user_id=args.user_id)
     eval_dataset = Dataset.from_list(eval_rows)
 
     if agentrouter_key:
-        base_url = os.getenv("AGENTROUTER_BASE_URL", "https://agentrouter.org/v1")
+        base_url = os.getenv("AGENTROUTER_BASE_URL", "https://co.agentrouter.org/v1")
         eval_llm = ChatOpenAI(api_key=agentrouter_key, base_url=base_url, model=args.llm_model)
     else:
         google_api_key = os.getenv("GOOGLE_API_KEY")
@@ -87,6 +95,11 @@ def main() -> None:
 
     print("\nRAGAS evaluation complete")
     print(result)
+    scores = result.to_pandas().mean(numeric_only=True).to_dict()
+    if scores.get("faithfulness", 0.0) < args.min_faithfulness:
+        raise SystemExit(f"Faithfulness below threshold: {scores.get('faithfulness', 0.0):.3f}")
+    if scores.get("context_precision", 0.0) < args.min_context_precision:
+        raise SystemExit(f"Context precision below threshold: {scores.get('context_precision', 0.0):.3f}")
 
 
 if __name__ == "__main__":

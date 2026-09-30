@@ -22,9 +22,11 @@ import {
   Menu,
   MessageSquare,
   MessageSquareHeart,
+  MoreHorizontal,
   PanelLeft,
   PanelLeftClose,
   Plus,
+  Pencil,
   RefreshCw,
   Search,
   Send,
@@ -43,30 +45,50 @@ import {
   getAuthUrl,
   getCurrentUser,
   getDriveFiles,
-  getGoogleLoginUrl,
   getIndexedSources,
   ingestFiles,
   ingestUrl,
   logoutUser,
   queryRAG,
   queryRAGStream,
-  resetChatMemory,
   syncDrive,
   unindexSource,
   submitFeedback,
+  getThreads,
+  getThreadMessages,
+  createBackendThread,
+  renameBackendThread,
+  deleteBackendThread,
   API_BASE,
 } from './api.js'
 import FeedbackModal from './components/FeedbackModal.jsx'
 import SettingsModal from './components/SettingsModal.jsx'
 import DotGrid from './components/DotGrid.jsx'
 import brandLogo from './assets/figma-logo-mark.svg'
-import brandLogoDark from './assets/figma-logo-mark-dark.svg'
 import { useI18n } from './lib/i18n.jsx'
-import googleLogo from './assets/google-logo-2025.webp'
-import heroImage from './assets/ragkno-hero.png'
+import { parseMarkdownTable } from './lib/markdownTable.js'
+import heroImage from './assets/ragkno-hero.webp'
 import serverRacksImage from './assets/server-racks.png'
 import serverCablesImage from './assets/server-cables.png'
-import ctaTexture from './assets/cta-texture.png'
+import ctaTexture from './assets/cta-texture.webp'
+import KnowledgeSourcesMarquee from './components/landing/KnowledgeSourcesMarquee.jsx'
+import BentoCapabilities from './components/landing/BentoCapabilities.jsx'
+import HowRagknoWorks from './components/landing/HowRagknoWorks.jsx'
+import ProductChatDemo from './components/landing/ProductChatDemo.jsx'
+import UseCasesSection from './components/landing/UseCasesSection.jsx'
+import FrequentlyAskedQuestions from './components/landing/FrequentlyAskedQuestions.jsx'
+import AuthPage from './components/AuthPage.jsx'
+import LegalPage from './components/LegalPage.jsx'
+import ChatErrorBoundary from './components/ChatErrorBoundary.jsx'
+import SiteFooter from './components/SiteFooter.jsx'
+
+function GitHubNavIcon({ size = 20 }) {
+  return (
+    <svg viewBox="0 0 24 24" width={size} height={size} fill="currentColor" aria-hidden="true">
+      <path fillRule="evenodd" clipRule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.53 1.032 1.53 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z" />
+    </svg>
+  )
+}
 
 function AppShell({ children, toasts, onDismissToast }) {
   const location = useLocation()
@@ -76,17 +98,48 @@ function AppShell({ children, toasts, onDismissToast }) {
   const isLoginRoute = location.pathname === '/login'
   const [mobileOpen, setMobileOpen] = useState(false)
   const [isScrolled, setIsScrolled] = useState(false)
+  const [navTone, setNavTone] = useState(isHomeRoute ? 'dark' : 'light')
 
   useEffect(() => {
+    let ticking = false
+    const readSurfaceTone = () => {
+      if (!isHomeRoute) {
+        setNavTone('light')
+        return
+      }
+
+      const sampleY = Math.min(54, window.innerHeight - 1)
+      const themedSurface = document
+        .elementsFromPoint(window.innerWidth / 2, sampleY)
+        .filter((element) => !element.closest('.top-nav'))
+        .map((element) => element.closest?.('[data-nav-theme]'))
+        .find(Boolean)
+      setNavTone(themedSurface?.dataset.navTheme === 'dark' ? 'dark' : 'light')
+    }
+
     const onScroll = () => {
-      const currentY = window.scrollY
-      setIsScrolled(currentY > 12)
+      if (!ticking) {
+        window.requestAnimationFrame(() => {
+          const currentY = window.scrollY
+          setIsScrolled((prev) => {
+            const next = currentY > 12
+            return prev === next ? prev : next
+          })
+          readSurfaceTone()
+          ticking = false
+        })
+        ticking = true
+      }
     }
 
     onScroll()
     window.addEventListener('scroll', onScroll, { passive: true })
-    return () => window.removeEventListener('scroll', onScroll)
-  }, [])
+    window.addEventListener('resize', onScroll)
+    return () => {
+      window.removeEventListener('scroll', onScroll)
+      window.removeEventListener('resize', onScroll)
+    }
+  }, [isHomeRoute])
 
   useEffect(() => {
     setMobileOpen(false)
@@ -95,7 +148,7 @@ function AppShell({ children, toasts, onDismissToast }) {
   return (
     <div className="app-shell">
       {!isAppRoute && !isLoginRoute && (
-        <header className={`top-nav ${isHomeRoute ? 'home-nav' : 'inner-nav'} ${isScrolled ? 'scrolled' : ''}`}>
+        <header className={`top-nav ${isHomeRoute ? 'home-nav' : 'inner-nav'} ${isScrolled ? 'scrolled' : ''} nav-on-${navTone}`}>
           <div className="top-nav-track">
             <div className="top-nav-shell">
               <div className="top-nav-inner">
@@ -103,9 +156,25 @@ function AppShell({ children, toasts, onDismissToast }) {
                   <img src={brandLogo} alt="RAGKNO logo" className="brand-logo" />
                   <span>RAGKNO</span>
                 </Link>
+                <nav className="top-links" aria-label="Primary navigation">
+                  <Link to="/#capabilities" className="top-link">Features</Link>
+                  <Link to="/#how-it-works" className="top-link">How it works</Link>
+                  <Link to="/#faq" className="top-link">FAQ</Link>
+                </nav>
                 <div className="top-actions">
-                  <Link to="/chat" className="navbar-button secondary">Login</Link>
-                  <Link to="/data" className="navbar-button primary">Get started</Link>
+                  <a
+                    href="https://github.com/GitHpriyanshu23/Ragkno.git"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="navbar-github-link"
+                    aria-label="GitHub Repository"
+                    title="GitHub Repository"
+                  >
+                    <GitHubNavIcon size={18} />
+                    <span>GitHub</span>
+                  </a>
+                  <Link to="/login?mode=signin" className="navbar-button secondary">Login</Link>
+                  <Link to="/login?mode=signup" className="navbar-button primary">Get started</Link>
                   <button
                     className="mobile-menu-btn"
                     type="button"
@@ -119,9 +188,26 @@ function AppShell({ children, toasts, onDismissToast }) {
               </div>
               {mobileOpen && (
                 <nav className="mobile-menu" aria-label="Mobile navigation">
+                  <div className="mobile-menu-links">
+                    <Link to="/#capabilities" className="mobile-menu-link" onClick={() => setMobileOpen(false)}>Features</Link>
+                    <Link to="/#how-it-works" className="mobile-menu-link" onClick={() => setMobileOpen(false)}>How it works</Link>
+                    <Link to="/#faq" className="mobile-menu-link" onClick={() => setMobileOpen(false)}>FAQ</Link>
+                  </div>
                   <div className="mobile-menu-actions">
-                    <Link to="/chat" className="navbar-button secondary" onClick={() => setMobileOpen(false)}>Login</Link>
-                    <Link to="/data" className="navbar-button primary" onClick={() => setMobileOpen(false)}>Get started</Link>
+                    <a
+                      href="https://github.com/GitHpriyanshu23/Ragkno.git"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="navbar-github-link"
+                      aria-label="GitHub Repository"
+                      title="GitHub Repository"
+                      onClick={() => setMobileOpen(false)}
+                    >
+                      <GitHubNavIcon size={18} />
+                      <span>GitHub</span>
+                    </a>
+                    <Link to="/login?mode=signin" className="navbar-button secondary" onClick={() => setMobileOpen(false)}>Login</Link>
+                    <Link to="/login?mode=signup" className="navbar-button primary" onClick={() => setMobileOpen(false)}>Get started</Link>
                   </div>
                 </nav>
               )}
@@ -174,12 +260,11 @@ function HomePage() {
 
   return (
     <>
-      <section className="hero-section">
+      <section className="hero-section" data-nav-theme="dark">
         <img className="hero-image" src={heroImage} alt="Open field landscape representing an accessible knowledge workspace" />
         <div className="hero-overlay" aria-hidden="true" />
         <div className="hero-grid">
           <div className="hero-copy-block">
-            <p className="hero-kicker"><Database size={13} /> Intelligent Retrieval System</p>
             <h1>
               Rag application <br />
               <span className="hero-your-word">
@@ -198,7 +283,7 @@ function HomePage() {
         </div>
       </section>
 
-      <section className="prompt-band">
+      <section className="prompt-band" data-nav-theme="light">
         <div className="prompt-dot-grid" aria-hidden="true">
           <DotGrid
             dotSize={3}
@@ -229,243 +314,36 @@ function HomePage() {
             <Link to="/data" className="generate-pill">Generate <ArrowRight size={14} /></Link>
           </div>
         </div>
-        <p className="built-label">Built for your docs</p>
+        <p className="built-label">Built for your</p>
+        <KnowledgeSourcesMarquee />
       </section>
 
-      <section className="feature-section">
-        <div className="feature-top">
-          <div className="feature-head">
-            <h2>
-              Structural Purity.<br />
-              Information at Scale.
-            </h2>
-            <p>Every interaction is designed to minimize friction and maximize insight retrieval.</p>
-          </div>
-          <div className="feature-label">Section 01 // Capabilities</div>
-        </div>
-        <div className="feature-grid">
-          <article className="feature-card">
-            <span className="feature-icon"><FolderSync size={18} /></span>
-            <h3>Universal Knowledge Mapping</h3>
-            <p>Map relationships between documents, links, and drive assets with semantic precision.</p>
-          </article>
-          <article className="feature-card dark-card">
-            <span className="feature-icon"><Shield size={18} /></span>
-            <h3>Hardened Privacy</h3>
-            <p>Enterprise-grade controls keep each query and source isolated and secure.</p>
-          </article>
-          <article className="feature-card">
-            <span className="feature-icon"><ArrowUp size={18} /></span>
-            <h3>Millisecond Latency</h3>
-            <p>Retrieve top context chunks instantly from your indexed knowledge base.</p>
-          </article>
-        </div>
-      </section>
+      {/* 2. Bento Capabilities (Dark #090909) */}
+      <BentoCapabilities />
 
-      <section className="connect-section">
-        <div className="connect-text">
-          <h2>Connect Everything.</h2>
-          <div className="connect-list">
-            <article className="connect-item">
-              <span className="connect-index">01</span>
-              <div>
-                <h3>Google Drive & Workspace</h3>
-                <p>Sync your entire organizational memory in seconds.</p>
-              </div>
-            </article>
-            <article className="connect-item">
-              <span className="connect-index">02</span>
-              <div>
-                <h3>Complex PDFs & Tables</h3>
-                <p>Extract structural data from static files with zero loss.</p>
-              </div>
-            </article>
-            <article className="connect-item">
-              <span className="connect-index">03</span>
-              <div>
-                <h3>Live Web Crawling</h3>
-                <p>Maintain live indexes of external documentation and sites.</p>
-              </div>
-            </article>
-          </div>
-        </div>
-        <div className="connect-tiles">
-          <div className="tile large">
-            <img src={serverRacksImage} alt="Server racks for connected knowledge infrastructure" />
-          </div>
-          <div className="tile">
-            <img src={serverCablesImage} alt="Server cables representing data ingestion pipelines" />
-          </div>
-          <div className="tile dark-tile">
-            <span>Optimized for</span>
-            <span>enterprise</span>
-            <span>deployment</span>
-          </div>
-        </div>
-      </section>
+      {/* 4. How RAGKNO Works (Dark #090909) */}
+      <HowRagknoWorks />
 
-      <section className="faq-section">
-        <div className="faq-head">
-          <h2>Frequently Asked Questions.</h2>
-          <p>Everything you need to know before deploying your knowledge archive.</p>
-        </div>
+      {/* 5. Product / Chat Demo (Light #FAFAFA) */}
+      <ProductChatDemo />
 
-        <div className="faq-list">
-          <details className="faq-item">
-            <summary>What data sources can I connect?</summary>
-            <p>
-              You can connect Google Drive, upload local files like PDF/DOCX/TXT, and ingest public URLs.
-              All sources are indexed into your retrieval pipeline.
-            </p>
-          </details>
+      {/* 6. Use Cases / Knowledge Types (Dark #090909) */}
+      <UseCasesSection />
 
-          <details className="faq-item">
-            <summary>How does the assistant cite answers?</summary>
-            <p>
-              Every generated answer can include source-backed citations linked to retrieved chunks, so you can
-              verify where each claim came from.
-            </p>
-          </details>
+      {/* 7. Frequently Asked Questions */}
+      <FrequentlyAskedQuestions />
 
-          <details className="faq-item">
-            <summary>Is chat memory isolated by session?</summary>
-            <p>
-              Yes. Chat context is tracked per session/thread, and you can clear memory anytime from the chat
-              controls.
-            </p>
-          </details>
-
-          <details className="faq-item">
-            <summary>Can I evaluate retrieval quality?</summary>
-            <p>
-              Yes. The project includes RAGAS-based evaluation tooling to measure faithfulness, answer relevancy,
-              and context precision on your test set.
-            </p>
-          </details>
-        </div>
-      </section>
-
-      <section className="cta-section" style={{ '--cta-image': `url(${ctaTexture})` }}>
-        <h2>Ready to archive the future?</h2>
+      {/* 8. Final CTA (Dark Texture) */}
+      <section className="cta-section" data-nav-theme="light" style={{ '--cta-image': `url(${ctaTexture})` }}>
+        <h2>Turn your knowledge into answers</h2>
         <div className="cta-actions">
           <Link className="btn-primary-solid" to="/data">Get Started Now</Link>
           <Link className="btn-outline" to="/chat">Request Demo</Link>
         </div>
       </section>
 
-      <footer className="site-footer">
-        <div className="footer-inner">
-          <div className="footer-brand">
-            <Link to="/" className="footer-logo-link">
-              <img src={brandLogoDark} alt="RAGKNO logo" className="footer-logo-img" />
-              <span>RAGKNO</span>
-            </Link>
-            <p className="footer-copyright">© RagKno 2026. All rights reserved.</p>
-          </div>
-
-          <div className="footer-links">
-            <div className="footer-col">
-              <h4>Product</h4>
-              <Link to="/data">Features</Link>
-              <Link to="/chat">Chat Assistant</Link>
-              <Link to="/data">Data Hub</Link>
-              <Link to="/data">Integrations</Link>
-            </div>
-            <div className="footer-col">
-              <h4>Resources</h4>
-              <a href="https://github.com" target="_blank" rel="noopener noreferrer">GitHub</a>
-              <Link to="/chat">Documentation</Link>
-              <Link to="/chat">API Reference</Link>
-              <Link to="/chat">Help Center</Link>
-            </div>
-            <div className="footer-col">
-              <h4>Legal</h4>
-              <Link to="/">Privacy Policy</Link>
-              <Link to="/">Terms of Service</Link>
-              <Link to="/">Cookie Policy</Link>
-            </div>
-            <div className="footer-col">
-              <h4>Account</h4>
-              <Link to="/login">Sign Up</Link>
-              <Link to="/login">Login</Link>
-              <Link to="/data">Dashboard</Link>
-            </div>
-          </div>
-        </div>
-        <div className="footer-watermark" aria-hidden="true">RagKno</div>
-      </footer>
+      <SiteFooter />
     </>
-  )
-}
-
-function PixelMaskVisual() {
-  return (
-    <div className="login-visual">
-      <img src={heroImage} alt="RagKno knowledge landscape" />
-      <div className="pixel-mask" aria-hidden="true" />
-    </div>
-  )
-}
-
-function LoginPage({ onUserChange, onToast }) {
-  const [loading, setLoading] = useState(false)
-
-  async function startGoogleLogin() {
-    setLoading(true)
-    try {
-      const { url } = await getGoogleLoginUrl()
-      window.location.href = url
-    } catch (error) {
-      setLoading(false)
-      onToast?.({ type: 'error', message: error.message || 'Unable to start Google login.' })
-    }
-  }
-
-  useEffect(() => {
-    let ignore = false
-    async function checkExistingSession() {
-      try {
-        const result = await getCurrentUser()
-        if (!ignore && result.authenticated) {
-          onUserChange?.(result.user)
-        }
-      } catch {
-        // Login page remains usable if the backend is not up yet.
-      }
-    }
-    void checkExistingSession()
-    return () => {
-      ignore = true
-    }
-  }, [onUserChange])
-
-  return (
-    <section className="login-page">
-      <div className="login-panel">
-        <Link to="/" className="login-brand">
-          <img src={brandLogo} alt="RAGKNO logo" />
-          <span>RagKno</span>
-        </Link>
-
-        <div className="login-copy">
-          <h1>Create your account</h1>
-          <button className="login-google-btn" type="button" onClick={startGoogleLogin} disabled={loading}>
-            <img className="google-mark" src={googleLogo} alt="" />
-            {loading ? 'Opening Google...' : 'Continue with Google'}
-          </button>
-          <p className="login-terms">
-            By continuing you agree to RagKno&apos;s terms and can connect data sources after sign in.
-          </p>
-        </div>
-
-        <div className="login-footer">
-          <span>© 2026 RagKno</span>
-          <span>Privacy</span>
-          <span>Terms</span>
-        </div>
-      </div>
-      <PixelMaskVisual />
-    </section>
   )
 }
 
@@ -531,7 +409,7 @@ function DataPage({ onToast }) {
   async function refreshIndexedSources() {
     try {
       const result = await getIndexedSources()
-      const sources = result.sources || []
+      const sources = (result.sources || []).map(repairSourceMetadata)
       setIndexedSources(sources)
       setIndexedSourceKeys(new Set(sources.map((item) => item.key)))
     } catch {
@@ -911,11 +789,124 @@ function UserAvatar({ user, displayName, className = ' ' }) {
   return <span className={className}>{initial}</span>
 }
 
-function ChatPage({ user, onUserChange, onToast }) {
+function isSimpleGreeting(value) {
+  const normalized = String(value || '')
+    .toLowerCase()
+    .replace(/[^a-z\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+  return /^(hi|hello|hey|hiya|howdy|good morning|good afternoon|good evening|hi there|hello there|hey there)$/.test(normalized)
+}
+
+function repairDisplayMojibake(value) {
+  return String(value || '')
+    .replaceAll('\u00e2\u0082\u00b9', '₹')
+    .replaceAll('\u00e2\u201a\u00b9', '₹')
+    .replaceAll('\u00c2₹', '₹')
+    .replaceAll('\u00e2\u0080\u0093', '–')
+    .replaceAll('\u00e2\u20ac\u201c', '–')
+    .replaceAll('\u00e2\u0080\u0094', '—')
+    .replaceAll('\u00e2\u20ac\u201d', '—')
+    .replaceAll('\u00e2\u0080\u00a6', '…')
+    .replaceAll('\u00e2\u20ac\u00a6', '…')
+    .replaceAll('\u00e2\u0080\u00a2', '•')
+    .replaceAll('\u00e2\u20ac\u00a2', '•')
+    .replaceAll('\u00e2\u0080\u0099', "'")
+    .replaceAll('\u00e2\u20ac\u2122', "'")
+    .replaceAll('\u00e2\u0080\u009c', '“')
+    .replaceAll('\u00e2\u0080\u009d', '”')
+}
+
+function repairSourceMetadata(source) {
+  if (!source || typeof source !== 'object') return source
+  return {
+    ...source,
+    source: repairDisplayMojibake(source.source),
+    title: repairDisplayMojibake(source.title),
+    preview: repairDisplayMojibake(source.preview),
+    text: repairDisplayMojibake(source.text),
+  }
+}
+
+const RETRIEVAL_ACTIVITY_STEPS = [
+  { label: 'Understanding your question', Icon: Search },
+  { label: 'Embedding your question', Icon: FolderSync },
+  { label: 'Searching user-scoped chunks', Icon: Database },
+  { label: 'Reranking relevant evidence', Icon: FolderSync },
+  { label: 'Writing a response', Icon: Send },
+]
+
+function RetrievalActivity({ activity }) {
+  const completed = activity?.stage === 'complete'
+  const failed = activity?.stage === 'failed'
+  const targetIndex = activity?.stage === 'searching'
+    ? 2
+    : activity?.stage === 'writing'
+      ? 4
+      : RETRIEVAL_ACTIVITY_STEPS.length
+  const [activeIndex, setActiveIndex] = useState(0)
+  const [expanded, setExpanded] = useState(!completed)
+
+  useEffect(() => {
+    if (completed) {
+      setActiveIndex(RETRIEVAL_ACTIVITY_STEPS.length)
+      return undefined
+    }
+    if (failed || activeIndex >= targetIndex) return undefined
+    const timer = window.setTimeout(() => {
+      setActiveIndex((current) => Math.min(current + 1, targetIndex))
+    }, 320)
+    return () => window.clearTimeout(timer)
+  }, [activeIndex, completed, failed, targetIndex])
+
+  useEffect(() => {
+    if (!completed) {
+      setExpanded(true)
+      return undefined
+    }
+    const timer = window.setTimeout(() => setExpanded(false), 900)
+    return () => window.clearTimeout(timer)
+  }, [completed])
+
+  if (!activity) return null
+
+  const label = failed
+    ? 'Retrieval interrupted'
+    : completed
+      ? `Searched ${activity.sourceCount || 0} ${activity.sourceCount === 1 ? 'source' : 'sources'}`
+      : RETRIEVAL_ACTIVITY_STEPS[Math.min(activeIndex, RETRIEVAL_ACTIVITY_STEPS.length - 1)].label
+
+  return (
+    <div className={`retrieval-activity ${failed ? 'is-failed' : ''}`}>
+      <button type="button" className="retrieval-activity-trigger" aria-expanded={expanded} onClick={() => setExpanded((value) => !value)}>
+        {completed ? <Check size={15} /> : <RefreshCw className={failed ? '' : 'spin'} size={15} />}
+        <span role="status">{label}</span>
+        <ChevronDown size={14} className={expanded ? 'is-open' : ''} />
+      </button>
+      <div className={`retrieval-activity-panel ${expanded ? 'is-open' : ''}`}>
+        <div className="retrieval-activity-steps">
+          {RETRIEVAL_ACTIVITY_STEPS.map(({ label: stepLabel, Icon }, index) => {
+            const done = completed || index < activeIndex
+            const active = !completed && !failed && index === activeIndex
+            return (
+              <div className={`retrieval-activity-step ${done ? 'is-done' : ''} ${active ? 'is-active' : ''}`} key={stepLabel}>
+                <span className="retrieval-step-icon">
+                  {done ? <Check size={13} /> : active ? <span className="retrieval-step-spinner" /> : <Icon size={13} />}
+                </span>
+                <span>{stepLabel}</span>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+export function ChatPage({ user, onUserChange, onToast }) {
   const location = useLocation()
   const navigate = useNavigate()
-  const CHAT_THREADS_KEY = 'ragkno_chat_threads_v1'
-  const ACTIVE_THREAD_KEY = 'ragkno_active_thread_v1'
+  const abortRef = useRef(null)
 
   function makeMessageId(prefix = 'msg') {
     const now = Date.now()
@@ -930,18 +921,6 @@ function ChatPage({ user, onUserChange, onToast }) {
     return trimmed.length > 48 ? `${trimmed.slice(0, 48)}...` : trimmed
   }
 
-  function createThread() {
-    const now = Date.now()
-    return {
-      id: window.crypto?.randomUUID?.() || `thread-${now}`,
-      sessionId: window.crypto?.randomUUID?.() || `session-${now}`,
-      title: 'New Chat',
-      createdAt: now,
-      updatedAt: now,
-      messages: [],
-    }
-  }
-
   function normalizeMessage(message, index = 0) {
     const role = message?.role === 'assistant' ? 'assistant' : 'user'
     return {
@@ -949,47 +928,10 @@ function ChatPage({ user, onUserChange, onToast }) {
       role,
       text: String(message?.text || ''),
       ts: String(message?.ts || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })),
-      sources: Array.isArray(message?.sources) ? message.sources : [],
+      sources: Array.isArray(message?.sources) ? message.sources.map(repairSourceMetadata) : [],
       streaming: Boolean(message?.streaming),
       action: message?.action || null,
-    }
-  }
-
-  function loadThreadsState() {
-    try {
-      const rawThreads = window.localStorage.getItem(CHAT_THREADS_KEY)
-      const rawActive = window.localStorage.getItem(ACTIVE_THREAD_KEY)
-
-      if (!rawThreads) {
-        const first = createThread()
-        return { threads: [first], activeId: first.id }
-      }
-
-      const parsed = JSON.parse(rawThreads)
-      if (!Array.isArray(parsed) || parsed.length === 0) {
-        const first = createThread()
-        return { threads: [first], activeId: first.id }
-      }
-
-      const validThreads = parsed
-        .filter((thread) => thread?.id && thread?.sessionId && Array.isArray(thread?.messages))
-        .map((thread) => ({
-          ...thread,
-          messages: thread.messages.map((message, index) => normalizeMessage(message, index)),
-        }))
-      if (validThreads.length === 0) {
-        const first = createThread()
-        return { threads: [first], activeId: first.id }
-      }
-
-      const activeThreadExists = rawActive && validThreads.some((thread) => thread.id === rawActive)
-      return {
-        threads: validThreads,
-        activeId: activeThreadExists ? rawActive : validThreads[0].id,
-      }
-    } catch {
-      const first = createThread()
-      return { threads: [first], activeId: first.id }
+      activity: null,
     }
   }
 
@@ -1051,45 +993,137 @@ function ChatPage({ user, onUserChange, onToast }) {
   }
 
   function renderAssistantText(text, message) {
-    const blocks = String(text || '').split(/\n\n+/)
-    return blocks.map((block, blockIndex) => {
-      const lines = block.split('\n').filter((line) => line.trim())
-      const isBulletBlock = lines.length > 0 && lines.every((line) => /^[-*]\s+/.test(line.trim()))
+    const lines = repairDisplayMojibake(text).replace(/\r\n/g, '\n').split('\n')
+    const output = []
+    let index = 0
 
-      if (isBulletBlock) {
-        return (
-          <ul key={`ul-${blockIndex}`}>
-            {lines.map((line, lineIndex) => (
-              <li key={`li-${blockIndex}-${lineIndex}`}>
-                {renderInlineText(line.replace(/^[-*]\s+/, ''), `b-${blockIndex}-${lineIndex}`, message)}
-              </li>
-            ))}
-          </ul>
-        )
+    while (index < lines.length) {
+      const trimmed = lines[index].trim()
+      if (!trimmed) {
+        index += 1
+        continue
       }
 
-      return (
-        <p key={`p-${blockIndex}`}>
-          {lines.map((line, lineIndex) => (
-            <span key={`ln-${blockIndex}-${lineIndex}`}>
-              {lineIndex > 0 && <br />}
-              {renderInlineText(line, `p-${blockIndex}-${lineIndex}`, message)}
-            </span>
+      const table = parseMarkdownTable(lines, index)
+      if (table) {
+        output.push(
+          <div className="assistant-table-wrap" key={`table-${output.length}`}>
+            <table className="assistant-table">
+              <thead>
+                <tr>
+                  {table.headers.map((cell, cellIndex) => (
+                    <th className={`align-${table.alignments[cellIndex]}`} key={`th-${cellIndex}`} scope="col">
+                      {renderInlineText(cell, `table-${output.length}-head-${cellIndex}`, message)}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {table.rows.map((row, rowIndex) => (
+                  <tr key={`tr-${rowIndex}`}>
+                    {row.map((cell, cellIndex) => (
+                      <td className={`align-${table.alignments[cellIndex]}`} key={`td-${rowIndex}-${cellIndex}`}>
+                        {renderInlineText(cell, `table-${output.length}-${rowIndex}-${cellIndex}`, message)}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>,
+        )
+        index = table.nextIndex
+        continue
+      }
+
+      if (/^[-*•]\s+/.test(trimmed)) {
+        const items = []
+        while (index < lines.length) {
+          const match = lines[index].trim().match(/^[-*•]\s+(.+)/)
+          if (!match) break
+          items.push(match[1])
+          index += 1
+        }
+        output.push(
+          <ul key={`ul-${output.length}`}>
+            {items.map((item, itemIndex) => (
+              <li key={`uli-${itemIndex}`}>{renderInlineText(item, `ul-${output.length}-${itemIndex}`, message)}</li>
+            ))}
+          </ul>,
+        )
+        continue
+      }
+
+      if (/^\d+[.)]\s+/.test(trimmed)) {
+        const items = []
+        while (index < lines.length) {
+          const match = lines[index].trim().match(/^\d+[.)]\s+(.+)/)
+          if (!match) break
+          items.push(match[1])
+          index += 1
+        }
+        output.push(
+          <ol key={`ol-${output.length}`}>
+            {items.map((item, itemIndex) => (
+              <li key={`oli-${itemIndex}`}>{renderInlineText(item, `ol-${output.length}-${itemIndex}`, message)}</li>
+            ))}
+          </ol>,
+        )
+        continue
+      }
+
+      const headingMatch = trimmed.match(/^#{1,4}\s+(.+)/)
+      if (headingMatch) {
+        output.push(<h3 className="assistant-response-heading" key={`heading-${output.length}`}>{renderInlineText(headingMatch[1], `heading-${output.length}`, message)}</h3>)
+        index += 1
+        continue
+      }
+
+      const paragraph = [trimmed]
+      index += 1
+      while (index < lines.length) {
+        const next = lines[index].trim()
+        if (!next || /^[-*•]\s+/.test(next) || /^\d+[.)]\s+/.test(next) || /^#{1,4}\s+/.test(next) || parseMarkdownTable(lines, index)) break
+        paragraph.push(next)
+        index += 1
+      }
+      output.push(
+        <p key={`p-${output.length}`}>
+          {paragraph.map((part, partIndex) => (
+            <span key={`line-${partIndex}`}>{partIndex > 0 && <br />}{renderInlineText(part, `p-${output.length}-${partIndex}`, message)}</span>
           ))}
-        </p>
+        </p>,
       )
-    })
+    }
+
+    return output
   }
 
-  const initialState = useMemo(() => loadThreadsState(), [])
-  const [threads, setThreads] = useState(initialState.threads)
-  const [activeThreadId, setActiveThreadId] = useState(initialState.activeId)
+  const chatCacheKey = `ragkno_chat_cache_v2:${user?.id || user?.email || 'user'}`
+  const [threads, setThreads] = useState(() => {
+    try {
+      const cached = JSON.parse(localStorage.getItem(chatCacheKey) || '[]')
+      return Array.isArray(cached)
+        ? cached.map((thread) => ({ ...thread, messagesLoaded: true, pending: false }))
+        : []
+    } catch {
+      return []
+    }
+  })
+  const cachedThreadsRef = useRef(threads)
+  const [activeThreadId, setActiveThreadId] = useState(
+    () => new URLSearchParams(window.location.search).get('thread'),
+  )
+  const [threadStartup, setThreadStartup] = useState({ status: 'ready', error: '' })
+  const [threadRetry, setThreadRetry] = useState(0)
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const { t } = useI18n()
   const [settingsModalOpen, setSettingsModalOpen] = useState(false)
   const [settingsModalTab, setSettingsModalTab] = useState('general')
   const [feedbackModalOpen, setFeedbackModalOpen] = useState(false)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [compactSidebarOpen, setCompactSidebarOpen] = useState(false)
 
   const openSettingsModal = (tab = 'general') => {
     setFeedbackModalOpen(false)
@@ -1112,15 +1146,20 @@ function ChatPage({ user, onUserChange, onToast }) {
         ((e.metaKey || e.ctrlKey) && e.key === '\\')
       ) {
         e.preventDefault()
-        setSidebarCollapsed((prev) => !prev)
+        if (window.matchMedia('(max-width: 920px)').matches) {
+          setSidebarCollapsed(false)
+          setCompactSidebarOpen((open) => !open)
+        } else {
+          setSidebarCollapsed((prev) => !prev)
+        }
       }
+      if (e.key === 'Escape') setCompactSidebarOpen(false)
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [])
   const [error, setError] = useState('')
   const [hoveredCitation, setHoveredCitation] = useState(null)
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [expandedSourceMessages, setExpandedSourceMessages] = useState(new Set())
   const [hoveredSourceMessage, setHoveredSourceMessage] = useState(null)
   const [indexedSources, setIndexedSources] = useState([])
@@ -1128,6 +1167,10 @@ function ChatPage({ user, onUserChange, onToast }) {
   const [sourceMenuOpen, setSourceMenuOpen] = useState(false)
   const [sourceModalOpen, setSourceModalOpen] = useState(false)
   const [profileMenuOpen, setProfileMenuOpen] = useState(false)
+  const [threadMenu, setThreadMenu] = useState(null)
+  const [renameDialog, setRenameDialog] = useState(null)
+  const [deleteDialog, setDeleteDialog] = useState(null)
+  const [threadActionPending, setThreadActionPending] = useState(false)
   const [selectedSourceKeys, setSelectedSourceKeys] = useState(new Set())
   const [quickUrl, setQuickUrl] = useState('')
   const [quickUploading, setQuickUploading] = useState(false)
@@ -1136,6 +1179,8 @@ function ChatPage({ user, onUserChange, onToast }) {
   const bottomRef = useRef(null)
   const chatScrollRef = useRef(null)
   const sourceDropdownRef = useRef(null)
+  const threadMenuRef = useRef(null)
+  const renameInputRef = useRef(null)
   const [showScrollBottom, setShowScrollBottom] = useState(false)
 
   const handleChatScroll = () => {
@@ -1156,14 +1201,19 @@ function ChatPage({ user, onUserChange, onToast }) {
       ? 'apps'
       : 'chat'
 
+  const requestedThreadId = useMemo(
+    () => new URLSearchParams(location.search).get('thread'),
+    [location.search],
+  )
+
   const sortedThreads = useMemo(
     () => [...threads].sort((a, b) => Number(b.updatedAt || 0) - Number(a.updatedAt || 0)),
     [threads],
   )
 
   const activeThread = useMemo(
-    () => threads.find((thread) => thread.id === activeThreadId) || sortedThreads[0],
-    [threads, activeThreadId, sortedThreads],
+    () => threads.find((thread) => thread.id === activeThreadId) || null,
+    [threads, activeThreadId],
   )
 
   const messages = activeThread?.messages || []
@@ -1172,28 +1222,129 @@ function ChatPage({ user, onUserChange, onToast }) {
   const displayName = firstName === 'there' ? 'RagKno user' : firstName
 
   useEffect(() => {
-    window.localStorage.setItem(CHAT_THREADS_KEY, JSON.stringify(threads))
-    if (activeThread?.id) {
-      window.localStorage.setItem(ACTIVE_THREAD_KEY, activeThread.id)
+    const timer = window.setTimeout(() => {
+      try {
+        const cacheable = sortedThreads.slice(0, 12).map((thread) => ({
+          id: thread.id,
+          sessionId: thread.id,
+          title: thread.title,
+          updatedAt: thread.updatedAt,
+          messagesLoaded: true,
+          messages: (thread.messages || []).slice(-60).map((message) => ({
+            ...message,
+            streaming: false,
+            activity: null,
+            sources: (message.sources || []).map(({ text, ...source }) => source),
+          })),
+        }))
+        localStorage.setItem(chatCacheKey, JSON.stringify(cacheable))
+      } catch {
+        // A cache write must never block or break the live conversation.
+      }
+    }, 450)
+    return () => window.clearTimeout(timer)
+  }, [chatCacheKey, sortedThreads])
+
+  useEffect(() => {
+    let cancelled = false
+    async function bootstrapThreads() {
+      setThreadStartup({ status: 'ready', error: '' })
+      try {
+        localStorage.removeItem('ragkno_chat_threads_v1')
+        localStorage.removeItem('ragkno_active_thread_v1')
+        const [result, requestedMessages] = await Promise.all([
+          getThreads(),
+          requestedThreadId
+            ? getThreadMessages(requestedThreadId).catch(() => null)
+            : Promise.resolve(null),
+        ])
+        const cachedById = new Map(cachedThreadsRef.current.map((thread) => [thread.id, thread]))
+        const nextThreads = Array.isArray(result?.threads)
+          ? result.threads.map((thread) => ({
+            ...thread,
+            sessionId: thread.id,
+            messages: thread.id === requestedThreadId && requestedMessages
+              ? (requestedMessages.messages || []).map((message, index) => normalizeMessage(message, index))
+              : (cachedById.get(thread.id)?.messages || []),
+            messagesLoaded: thread.id === requestedThreadId && Boolean(requestedMessages),
+          }))
+          : []
+        if (!cancelled) {
+          setThreads(nextThreads)
+          setThreadStartup({ status: 'ready', error: '' })
+
+          // Warm recent conversations after the shell is usable. This keeps the
+          // first paint fast and makes subsequent switches feel immediate.
+          const threadsToWarm = nextThreads.slice(0, 12).filter((thread) => !thread.messagesLoaded)
+          void Promise.allSettled(threadsToWarm.map(async (thread) => {
+            const messagesResult = await getThreadMessages(thread.id)
+            return {
+              id: thread.id,
+              messages: (messagesResult.messages || []).map((message, index) => normalizeMessage(message, index)),
+            }
+          })).then((settled) => {
+            if (cancelled) return
+            const warmed = new Map(settled
+              .filter((item) => item.status === 'fulfilled')
+              .map((item) => [item.value.id, item.value.messages]))
+            if (!warmed.size) return
+            setThreads((prev) => prev.map((thread) => warmed.has(thread.id)
+              ? { ...thread, messages: warmed.get(thread.id), messagesLoaded: true }
+              : thread))
+          })
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setThreadStartup({ status: 'ready', error: err.message || 'Failed to load conversations.' })
+          onToast?.({ type: 'error', message: err.message || 'Failed to load conversations.' })
+        }
+      }
     }
-  }, [threads, activeThread])
+    void bootstrapThreads()
+    return () => { cancelled = true }
+  }, [user?.id, threadRetry])
+
+  useEffect(() => {
+    if (appView !== 'chat') return
+    if (!requestedThreadId) {
+      setActiveThreadId(null)
+      return
+    }
+    if (threads.some((thread) => thread.id === requestedThreadId)) {
+      setActiveThreadId(requestedThreadId)
+    }
+  }, [appView, requestedThreadId, threads])
+
+  useEffect(() => {
+    if (!activeThreadId) return undefined
+    const targetThread = threads.find((thread) => thread.id === activeThreadId)
+    if (targetThread?.messagesLoaded) return undefined
+    let cancelled = false
+    async function hydrate() {
+      try {
+        const result = await getThreadMessages(activeThreadId)
+        if (cancelled) return
+        setThreads((prev) => prev.map((thread) => thread.id === activeThreadId
+          ? { ...thread, messages: (result.messages || []).map((message, index) => normalizeMessage(message, index)), messagesLoaded: true }
+          : thread))
+      } catch (err) {
+        if (!cancelled) onToast?.({ type: 'error', message: err.message || 'Failed to load this conversation.' })
+      }
+    }
+    void hydrate()
+    return () => { cancelled = true }
+  }, [activeThreadId])
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
     handleChatScroll()
   }, [messages, loading])
 
-  useEffect(() => {
-    if (!activeThread && threads.length > 0) {
-      setActiveThreadId(threads[0].id)
-    }
-  }, [activeThread, threads])
-
   async function refreshIndexedSources() {
     setSourcesLoading(true)
     try {
       const result = await getIndexedSources()
-      const sources = result.sources || []
+      const sources = (result.sources || []).map(repairSourceMetadata)
       setIndexedSources(sources)
       setSelectedSourceKeys((prev) => new Set([...prev].filter((key) => sources.some((item) => item.key === key))))
     } catch (error) {
@@ -1219,6 +1370,44 @@ function ChatPage({ user, onUserChange, onToast }) {
     }
   }, [sourceMenuOpen])
 
+  useEffect(() => {
+    if (!threadMenu) return undefined
+    function closeThreadMenu(event) {
+      if (!threadMenuRef.current?.contains(event.target)) setThreadMenu(null)
+    }
+    function closeOnEscape(event) {
+      if (event.key === 'Escape') setThreadMenu(null)
+    }
+    document.addEventListener('mousedown', closeThreadMenu)
+    document.addEventListener('keydown', closeOnEscape)
+    return () => {
+      document.removeEventListener('mousedown', closeThreadMenu)
+      document.removeEventListener('keydown', closeOnEscape)
+    }
+  }, [threadMenu])
+
+  useEffect(() => {
+    if (!renameDialog) return undefined
+    const timer = window.setTimeout(() => renameInputRef.current?.select(), 0)
+    function closeOnEscape(event) {
+      if (event.key === 'Escape' && !threadActionPending) setRenameDialog(null)
+    }
+    document.addEventListener('keydown', closeOnEscape)
+    return () => {
+      window.clearTimeout(timer)
+      document.removeEventListener('keydown', closeOnEscape)
+    }
+  }, [renameDialog, threadActionPending])
+
+  useEffect(() => {
+    if (!deleteDialog) return undefined
+    function closeOnEscape(event) {
+      if (event.key === 'Escape' && !threadActionPending) setDeleteDialog(null)
+    }
+    document.addEventListener('keydown', closeOnEscape)
+    return () => document.removeEventListener('keydown', closeOnEscape)
+  }, [deleteDialog, threadActionPending])
+
   function getSourceIcon(type) {
     const t = String(type || '').toLowerCase()
     if (t.includes('web') || t.includes('url') || t.includes('http')) {
@@ -1230,8 +1419,8 @@ function ChatPage({ user, onUserChange, onToast }) {
     return <FileText size={13} />
   }
 
-  function addGuidedIndexMessage(userText) {
-    if (!activeThread) return
+  function addGuidedIndexMessage(userText, threadId) {
+    if (!threadId) return
     const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     const userMessage = {
       id: makeMessageId('user'),
@@ -1250,7 +1439,7 @@ function ChatPage({ user, onUserChange, onToast }) {
       streaming: false,
       action: { label: 'Open Data Center', to: '/chat/data' },
     }
-    updateActiveThread((thread) => ({
+    updateThreadById(threadId, (thread) => ({
       ...thread,
       title: thread.messages.some((msg) => msg.role === 'user') ? thread.title : makeThreadTitleFromMessage(userText),
       updatedAt: Date.now(),
@@ -1329,20 +1518,22 @@ function ChatPage({ user, onUserChange, onToast }) {
   }
 
   function updateActiveThread(updater) {
-    if (!activeThread) {
-      return
-    }
+    if (!activeThreadId) return
+    updateThreadById(activeThreadId, updater)
+  }
 
+  function updateThreadById(threadId, updater) {
+    if (!threadId) return
     setThreads((prev) => prev.map((thread) => {
-      if (thread.id !== activeThread.id) {
+      if (thread.id !== threadId) {
         return thread
       }
       return updater(thread)
     }))
   }
 
-  function updateMessageById(messageId, updater) {
-    updateActiveThread((thread) => ({
+  function updateMessageById(messageId, updater, threadId = activeThreadId) {
+    updateThreadById(threadId, (thread) => ({
       ...thread,
       updatedAt: Date.now(),
       messages: thread.messages.map((message) => {
@@ -1373,12 +1564,49 @@ function ChatPage({ user, onUserChange, onToast }) {
       return
     }
 
-    if (!activeThread) {
-      return
+    let targetThread = activeThread
+    let targetThreadId = activeThread?.id || null
+
+    if (!targetThreadId) {
+      targetThreadId = makeMessageId('thread')
+      const title = makeThreadTitleFromMessage(text)
+      targetThread = {
+        id: targetThreadId,
+        sessionId: targetThreadId,
+        title,
+        messages: [],
+        messagesLoaded: true,
+        updatedAt: Date.now(),
+        pending: true,
+      }
+      setThreads((prev) => [targetThread, ...prev])
+      setActiveThreadId(targetThreadId)
+      navigate(`/chat?thread=${encodeURIComponent(targetThreadId)}`)
+
+      try {
+        const result = await createBackendThread(title, targetThreadId)
+        updateThreadById(targetThreadId, (thread) => ({
+          ...thread,
+          ...(result?.thread || {}),
+          id: targetThreadId,
+          sessionId: targetThreadId,
+          messages: thread.messages,
+          messagesLoaded: true,
+          pending: false,
+        }))
+      } catch (createError) {
+        setThreads((prev) => prev.filter((thread) => thread.id !== targetThreadId))
+        setActiveThreadId(null)
+        navigate('/chat', { replace: true })
+        onToast?.({ type: 'error', message: createError.message || 'Failed to create a new chat.' })
+        return
+      }
     }
 
-    if (indexedSources.length === 0) {
-      addGuidedIndexMessage(text)
+    const greetingOnly = isSimpleGreeting(text)
+
+    if (!greetingOnly && indexedSources.length === 0) {
+      addGuidedIndexMessage(text, targetThreadId)
       setInput('')
       setError('')
       return
@@ -1393,6 +1621,7 @@ function ChatPage({ user, onUserChange, onToast }) {
       streaming: false,
     }
     const assistantMessageId = makeMessageId('assistant')
+    const requestId = window.crypto?.randomUUID?.() || `request-${Date.now()}-${Math.random().toString(36).slice(2)}`
     const assistantMessage = {
       id: assistantMessageId,
       role: 'assistant',
@@ -1400,9 +1629,11 @@ function ChatPage({ user, onUserChange, onToast }) {
       ts: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       sources: [],
       streaming: true,
+      requestId,
+      activity: greetingOnly ? null : { stage: 'searching', sourceCount: 0 },
     }
 
-    updateActiveThread((thread) => ({
+    updateThreadById(targetThreadId, (thread) => ({
       ...thread,
       title: thread.messages.some((msg) => msg.role === 'user') ? thread.title : makeThreadTitleFromMessage(text),
       updatedAt: Date.now(),
@@ -1411,142 +1642,274 @@ function ChatPage({ user, onUserChange, onToast }) {
     setInput('')
     setLoading(true)
     setError('')
+    const controller = new AbortController()
+    let requestTimedOut = false
+    const requestTimeout = window.setTimeout(() => {
+      requestTimedOut = true
+      controller.abort()
+    }, 120_000)
+    abortRef.current = controller
+
+    const requestOptions = {
+      threadId: targetThreadId,
+      requestId,
+      topK: Math.max(1, Math.min(20, Number(localStorage.getItem('ragkno_top_k') || 5))),
+      useReranker: localStorage.getItem('ragkno_reranker') !== 'false',
+      language: localStorage.getItem('ragkno_lang') || 'auto',
+      sourceIds: [...selectedSourceKeys],
+      signal: controller.signal,
+    }
+
+    const revealQueue = []
+    const revealWaiters = []
+    let revealRunning = false
+
+    const finishRevealWaiters = () => {
+      while (revealWaiters.length > 0) revealWaiters.shift()()
+    }
+
+    const drainRevealQueue = async () => {
+      if (revealRunning) return
+      revealRunning = true
+      while (revealQueue.length > 0 && !controller.signal.aborted) {
+        const nextPart = revealQueue.shift()
+        updateMessageById(assistantMessageId, (message) => ({
+          ...message,
+          text: `${message.text}${nextPart}`,
+        }), targetThreadId)
+        const delay = revealQueue.length > 90 ? 7 : revealQueue.length > 40 ? 11 : 18
+        await new Promise((resolve) => window.setTimeout(resolve, delay))
+      }
+      revealRunning = false
+      if (revealQueue.length === 0 || controller.signal.aborted) finishRevealWaiters()
+    }
+
+    const enqueueResponseText = (value) => {
+      const parts = String(value || '').match(/\S+\s*|\s+/g) || []
+      if (parts.length === 0) return
+      revealQueue.push(...parts)
+      void drainRevealQueue()
+    }
+
+    const appendStreamedText = (value) => {
+      const part = String(value || '')
+      if (!part) return
+      updateMessageById(assistantMessageId, (message) => ({
+        ...message,
+        text: `${message.text}${part}`,
+        activity: null,
+      }), targetThreadId)
+    }
+
+    const waitForResponseReveal = () => {
+      if (!revealRunning && revealQueue.length === 0) return Promise.resolve()
+      return new Promise((resolve) => revealWaiters.push(resolve))
+    }
 
     try {
-      const streamDonePayload = await queryRAGStream(text, 3, activeThread.sessionId, {
-        onMeta: (meta) => {
-          const metaSources = Array.isArray(meta?.sources) ? meta.sources : []
-          updateMessageById(assistantMessageId, (message) => ({
-            ...message,
-            sources: metaSources,
-          }))
+      const shouldStream = localStorage.getItem('ragkno_streaming') !== 'false'
+      const streamDonePayload = shouldStream
+        ? await queryRAGStream(text, requestOptions, {
+          signal: controller.signal,
+          onMeta: (meta) => {
+            const metaSources = Array.isArray(meta?.sources) ? meta.sources.map(repairSourceMetadata) : []
+            updateMessageById(assistantMessageId, (message) => ({
+              ...message,
+              sources: metaSources,
+              activity: meta?.local ? null : { stage: 'writing', sourceCount: metaSources.length },
+            }), targetThreadId)
+          },
+          onToken: (token) => {
+            appendStreamedText(token)
+          },
+        })
+        : await queryRAG(text, requestOptions)
 
-          if (meta?.session_id) {
-            updateActiveThread((thread) => ({
-              ...thread,
-              updatedAt: Date.now(),
-              sessionId: meta.session_id,
-            }))
-          }
-        },
-        onToken: (token) => {
-          updateMessageById(assistantMessageId, (message) => ({
-            ...message,
-            text: `${message.text}${token}`,
-          }))
-        },
-      })
+      if (!shouldStream) {
+        enqueueResponseText(streamDonePayload?.answer)
+        await waitForResponseReveal()
+      }
+      if (controller.signal.aborted) {
+        const abortError = new Error('Response cancelled.')
+        abortError.name = 'AbortError'
+        throw abortError
+      }
 
       updateMessageById(assistantMessageId, (message) => ({
         ...message,
-        text: streamDonePayload?.answer || message.text || 'No relevant documents found.',
+        text: message.text || streamDonePayload?.answer || 'No relevant documents found.',
         sources: Array.isArray(streamDonePayload?.sources) && streamDonePayload.sources.length > 0
-          ? streamDonePayload.sources
+          ? streamDonePayload.sources.map(repairSourceMetadata)
           : message.sources,
+        activity: null,
         streaming: false,
-      }))
+      }), targetThreadId)
     } catch (streamError) {
-      try {
-        const result = await queryRAG(text, 3, activeThread.sessionId)
-        updateMessageById(assistantMessageId, (message) => ({
-          ...message,
-          text: result.answer || message.text || 'No relevant documents found.',
-          sources: Array.isArray(result.sources) ? result.sources : message.sources,
-          streaming: false,
-        }))
-      } catch (fallbackError) {
-        const noIndexedData = String(fallbackError.message || '').toLowerCase().includes('no documents indexed')
-        updateMessageById(assistantMessageId, (message) => ({
-          ...message,
-          streaming: false,
-          text: noIndexedData
-            ? `Hi ${user?.name?.split(' ')?.[0] || 'there'}, I can answer from your documents once your knowledge base has data. Please index a file, Drive document, or URL first.`
-            : message.text || 'The response failed. Please retry.',
-          action: noIndexedData ? { label: 'Open Data Center', to: '/chat/data' } : null,
-        }))
-        if (noIndexedData) {
-          setError('')
-        } else {
-          setError(fallbackError.message)
-          onToast?.({
-            type: 'error',
-            message: fallbackError.message,
-            actionLabel: 'Retry',
-            onAction: () => { },
-          })
-        }
-      }
-
-      if (streamError?.message) {
-        onToast?.({ type: 'info', message: `Stream interrupted, used fallback response. ${streamError.message}` })
-      }
+      const aborted = streamError?.name === 'AbortError'
+      const timeoutMessage = 'The model took too long to respond. Please try again.'
+      updateMessageById(assistantMessageId, (message) => ({
+        ...message,
+        streaming: false,
+        interrupted: true,
+        activity: message.activity ? { ...message.activity, stage: 'failed' } : null,
+        text: message.text || (requestTimedOut ? timeoutMessage : aborted ? 'Response cancelled.' : 'The response failed before it completed.'),
+      }), targetThreadId)
+      setError(requestTimedOut ? timeoutMessage : aborted ? '' : streamError.message)
+      if (requestTimedOut) onToast?.({ type: 'error', message: timeoutMessage })
+      else if (!aborted) onToast?.({ type: 'error', message: streamError.message || 'Response interrupted.' })
     } finally {
+      window.clearTimeout(requestTimeout)
+      abortRef.current = null
       setLoading(false)
     }
   }
 
-  async function startNewChat() {
-    const newThread = createThread()
-    setThreads((prev) => [newThread, ...prev])
-    setActiveThreadId(newThread.id)
+  function startNewChat() {
+    abortRef.current?.abort()
+    setActiveThreadId(null)
     setError('')
     setInput('')
     setSourceMenuOpen(false)
     setSourceModalOpen(false)
+    setCompactSidebarOpen(false)
     navigate('/chat')
   }
 
-  async function resetCurrentChatMemory() {
-    if (!activeThread?.sessionId) {
+  function openThread(threadId) {
+    if (!threadId) return
+    setActiveThreadId(threadId)
+    setError('')
+    setCompactSidebarOpen(false)
+    navigate(`/chat?thread=${encodeURIComponent(threadId)}`)
+  }
+
+  function navigateFromSidebar(path) {
+    setCompactSidebarOpen(false)
+    navigate(path)
+  }
+
+  function collapseOrCloseSidebar() {
+    if (window.matchMedia('(max-width: 920px)').matches) {
+      setCompactSidebarOpen(false)
       return
     }
+    setSidebarCollapsed(true)
+  }
 
-    try {
-      await resetChatMemory(activeThread.sessionId)
-    } catch {
-      // Keep local reset behavior even if backend reset fails.
+  function openThreadMenu(event, thread) {
+    event.stopPropagation()
+    if (threadMenu?.id === thread.id) {
+      setThreadMenu(null)
+      return
     }
+    const rect = event.currentTarget.getBoundingClientRect()
+    const menuHeight = 92
+    const top = rect.bottom + menuHeight + 8 > window.innerHeight
+      ? Math.max(8, rect.top - menuHeight - 4)
+      : rect.bottom + 4
+    setThreadMenu({
+      id: thread.id,
+      title: thread.title || 'New Chat',
+      top,
+      left: Math.max(8, rect.right - 156),
+    })
+  }
 
-    updateActiveThread((thread) => ({
-      ...thread,
-      title: 'New Chat',
-      updatedAt: Date.now(),
-      messages: [],
-    }))
-    setError('')
-    setInput('')
+  async function submitThreadRename(event) {
+    event.preventDefault()
+    const title = String(renameDialog?.title || '').trim()
+    if (!renameDialog?.id || !title || threadActionPending) return
+    setThreadActionPending(true)
+    try {
+      await renameBackendThread(renameDialog.id, title)
+      setThreads((prev) => prev.map((thread) => thread.id === renameDialog.id
+        ? { ...thread, title, updatedAt: Date.now() }
+        : thread))
+      setRenameDialog(null)
+    } catch (err) {
+      onToast?.({ type: 'error', message: err.message || 'Failed to rename conversation.' })
+    } finally {
+      setThreadActionPending(false)
+    }
+  }
+
+  async function confirmThreadDelete() {
+    if (!deleteDialog?.id || threadActionPending) return
+    setThreadActionPending(true)
+    try {
+      const deleted = await deleteThread(deleteDialog.id)
+      if (deleted) setDeleteDialog(null)
+    } finally {
+      setThreadActionPending(false)
+    }
+  }
+
+  async function resetCurrentChatMemory() {
+    if (!activeThread?.id) return
+    await deleteThread(activeThread.id)
+    startNewChat()
   }
 
   async function deleteThread(threadId) {
     const target = threads.find((thread) => thread.id === threadId)
     if (!target) {
-      return
+      return false
     }
 
     try {
-      await resetChatMemory(target.sessionId)
-    } catch {
-      // Keep local deletion even if backend reset fails.
+      await deleteBackendThread(threadId)
+      const remaining = threads.filter((thread) => thread.id !== threadId)
+      setThreads(remaining)
+      if (activeThreadId === threadId) {
+        setActiveThreadId(null)
+        navigate('/chat', { replace: true })
+      }
+      return true
+    } catch (err) {
+      onToast?.({ type: 'error', message: err.message || 'Failed to delete conversation.' })
+      return false
     }
+  }
 
-    setThreads((prev) => {
-      const remaining = prev.filter((thread) => thread.id !== threadId)
-      if (remaining.length > 0) {
-        return remaining
-      }
-      return [createThread()]
-    })
-
-    if (activeThreadId === threadId) {
-      const fallback = threads.find((thread) => thread.id !== threadId)
-      if (fallback) {
-        setActiveThreadId(fallback.id)
-      }
+  async function clearAllHistory() {
+    try {
+      await Promise.all(threads.map((thread) => deleteBackendThread(thread.id)))
+      setThreads([])
+      setActiveThreadId(null)
+      startNewChat()
+      onToast?.({ type: 'info', message: t('historyCleared') || 'Chat history cleared.' })
+    } catch (err) {
+      onToast?.({ type: 'error', message: err.message || 'Failed to clear conversation history.' })
     }
   }
 
   return (
     <section className={`chat-page ${sidebarCollapsed ? 'collapsed' : ''}`}>
+      <button
+        className={`compact-sidebar-open-btn ${compactSidebarOpen ? 'is-hidden' : ''}`}
+        type="button"
+        onClick={() => {
+          setSidebarCollapsed(false)
+          setCompactSidebarOpen(true)
+        }}
+        aria-label="Open sidebar"
+        aria-expanded={compactSidebarOpen}
+        aria-controls="chat-navigation-sidebar"
+        title="Open sidebar"
+      >
+        <HugeiconsIcon icon={LayoutAlignRightIcon} size={20} />
+      </button>
+
+      {compactSidebarOpen && (
+        <button
+          className="compact-sidebar-backdrop"
+          type="button"
+          onClick={() => setCompactSidebarOpen(false)}
+          aria-label="Close sidebar"
+          tabIndex={-1}
+        />
+      )}
+
       {sidebarCollapsed && (
         <aside
           className="chat-collapsed-rail"
@@ -1650,9 +2013,9 @@ function ChatPage({ user, onUserChange, onToast }) {
       )}
 
       {!sidebarCollapsed && (
-        <aside className="chat-sidebar">
+        <aside id="chat-navigation-sidebar" className={`chat-sidebar ${compactSidebarOpen ? 'compact-open' : ''}`}>
           <div className="chat-sidebar-header">
-            <Link to="/chat" className="chat-sidebar-brand">
+            <Link to="/chat" className="chat-sidebar-brand" onClick={() => setCompactSidebarOpen(false)}>
               <img src={brandLogo} alt="RAGKNO logo" />
               <span>RagKno</span>
             </Link>
@@ -1669,7 +2032,7 @@ function ChatPage({ user, onUserChange, onToast }) {
               <button
                 className="sidebar-toggle-btn"
                 type="button"
-                onClick={() => setSidebarCollapsed(true)}
+                onClick={collapseOrCloseSidebar}
                 aria-label="Collapse sidebar"
                 title="Collapse sidebar"
               >
@@ -1684,13 +2047,13 @@ function ChatPage({ user, onUserChange, onToast }) {
           </button>
 
           <div className="sidebar-nav-group">
-            <button className={`history-btn ${appView === 'chat' ? 'active' : ''}`} onClick={() => navigate('/chat')}>
+            <button className={`history-btn ${appView === 'chat' ? 'active' : ''}`} onClick={() => navigateFromSidebar('/chat')}>
               <MessageSquare size={14} /> <span>Chats</span>
             </button>
-            <button className={`history-btn ${appView === 'data' ? 'active' : ''}`} onClick={() => navigate('/chat/data')}>
+            <button className={`history-btn ${appView === 'data' ? 'active' : ''}`} onClick={() => navigateFromSidebar('/chat/data')}>
               <Database size={14} /> <span>Data Center</span>
             </button>
-            <button className={`history-btn ${appView === 'apps' ? 'active' : ''}`} onClick={() => navigate('/chat/apps')}>
+            <button className={`history-btn ${appView === 'apps' ? 'active' : ''}`} onClick={() => navigateFromSidebar('/chat/apps')}>
               <Cloud size={14} /> <span>{t('connectApps') || 'Connect Apps'}</span>
             </button>
           </div>
@@ -1704,20 +2067,19 @@ function ChatPage({ user, onUserChange, onToast }) {
               <div key={thread.id} className={`history-item ${thread.id === activeThread?.id ? 'active' : ''}`}>
                 <button
                   className={`history-btn ${thread.id === activeThread?.id ? 'active' : ''}`}
-                  onClick={() => setActiveThreadId(thread.id)}
+                  onClick={() => openThread(thread.id)}
                   title={thread.title || 'New Chat'}
                 >
-                  {thread.title || 'New Chat'}
+                  <span className="history-title-text">{thread.title || 'New Chat'}</span>
                 </button>
                 <button
-                  className="history-delete-btn"
-                  aria-label={`Delete ${thread.title || 'chat'}`}
-                  onClick={(event) => {
-                    event.stopPropagation()
-                    void deleteThread(thread.id)
-                  }}
+                  className="history-options-btn"
+                  aria-label={`Chat options for ${thread.title || 'New Chat'}`}
+                  aria-haspopup="menu"
+                  aria-expanded={threadMenu?.id === thread.id}
+                  onClick={(event) => openThreadMenu(event, thread)}
                 >
-                  <Trash2 size={13} />
+                  <MoreHorizontal size={16} />
                 </button>
               </div>
             ))}
@@ -1748,6 +2110,73 @@ function ChatPage({ user, onUserChange, onToast }) {
         </aside>
       )}
 
+      {threadMenu && (
+        <div
+          ref={threadMenuRef}
+          className="thread-options-menu"
+          role="menu"
+          aria-label={`Options for ${threadMenu.title}`}
+          style={{ top: threadMenu.top, left: threadMenu.left }}
+        >
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              setRenameDialog({ id: threadMenu.id, title: threadMenu.title })
+              setThreadMenu(null)
+            }}
+          >
+            <Pencil size={16} /> Rename
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className="danger"
+            onClick={() => {
+              setDeleteDialog({ id: threadMenu.id, title: threadMenu.title })
+              setThreadMenu(null)
+            }}
+          >
+            <Trash2 size={16} /> Delete
+          </button>
+        </div>
+      )}
+
+      {renameDialog && (
+        <div className="thread-dialog-backdrop" role="presentation" onMouseDown={() => !threadActionPending && setRenameDialog(null)}>
+          <form className="thread-dialog" role="dialog" aria-modal="true" aria-labelledby="rename-chat-title" onSubmit={submitThreadRename} onMouseDown={(event) => event.stopPropagation()}>
+            <button className="thread-dialog-close" type="button" aria-label="Close rename dialog" disabled={threadActionPending} onClick={() => setRenameDialog(null)}><X size={19} /></button>
+            <h2 id="rename-chat-title">Rename chat</h2>
+            <p>Keep it short and recognizable.</p>
+            <input
+              ref={renameInputRef}
+              value={renameDialog.title}
+              maxLength={120}
+              aria-label="Chat name"
+              onChange={(event) => setRenameDialog((current) => ({ ...current, title: event.target.value }))}
+            />
+            <div className="thread-dialog-actions">
+              <button type="button" className="secondary" disabled={threadActionPending} onClick={() => setRenameDialog(null)}>Cancel</button>
+              <button type="submit" className="primary" disabled={threadActionPending || !renameDialog.title.trim()}>{threadActionPending ? 'Saving…' : 'Save'}</button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {deleteDialog && (
+        <div className="thread-dialog-backdrop" role="presentation" onMouseDown={() => !threadActionPending && setDeleteDialog(null)}>
+          <div className="thread-dialog delete-thread-dialog" role="dialog" aria-modal="true" aria-labelledby="delete-chat-title" onMouseDown={(event) => event.stopPropagation()}>
+            <button className="thread-dialog-close" type="button" aria-label="Close delete dialog" disabled={threadActionPending} onClick={() => setDeleteDialog(null)}><X size={19} /></button>
+            <h2 id="delete-chat-title">Delete chat?</h2>
+            <p>This will permanently delete <strong>{deleteDialog.title}</strong>. This can’t be undone.</p>
+            <div className="thread-dialog-actions">
+              <button type="button" className="secondary" disabled={threadActionPending} onClick={() => setDeleteDialog(null)}>Cancel</button>
+              <button type="button" className="danger" disabled={threadActionPending} onClick={() => void confirmThreadDelete()}>{threadActionPending ? 'Deleting…' : 'Delete chat'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <section className={`chat-canvas ${appView !== 'chat' ? 'utility-view' : ''} ${appView === 'chat' && messages.length === 0 ? 'is-empty' : ''}`}>
 
         {appView === 'data' && (
@@ -1767,7 +2196,15 @@ function ChatPage({ user, onUserChange, onToast }) {
           </div>
         )}
 
-        {appView === 'chat' && (
+        {appView === 'chat' && threadStartup.status === 'loading' && (
+          <div className="chat-startup-quiet" role="status" aria-label="Loading conversations" aria-live="polite" />
+        )}
+
+        {appView === 'chat' && threadStartup.status === 'error' && (
+          <div className="chat-startup-state chat-startup-error" role="alert"><div><h1>We couldn’t load your chats.</h1><p>{threadStartup.error}</p><button type="button" onClick={() => setThreadRetry((value) => value + 1)}><RefreshCw size={16} /> Try again</button></div></div>
+        )}
+
+        {appView === 'chat' && threadStartup.status === 'ready' && (
           <>
             <div className="chat-scroll-container" ref={chatScrollRef} onScroll={handleChatScroll}>
               <div className="message-stack">
@@ -1779,17 +2216,10 @@ function ChatPage({ user, onUserChange, onToast }) {
 
                 {messages.map((message) => (
                   <div key={message.id} className={`message ${message.role}`}>
-                    <div className="bubble">
-                      {message.role === 'assistant' ? renderAssistantText(message.text, message) : message.text}
-                      {message.action?.to && (
-                        <Link className="message-action-link" to={message.action.to}>
-                          {message.action.label || 'Open'}
-                        </Link>
-                      )}
-                      {message.role === 'assistant' && message.streaming && <span className="typing-cursor" aria-hidden="true" />}
-                    </div>
-
-                    {message.role === 'assistant' && Array.isArray(message.sources) && message.sources.length > 0 && (
+                    {message.role === 'assistant' && message.activity && (
+                      <RetrievalActivity activity={message.activity} />
+                    )}
+                    {message.role === 'assistant' && !message.activity && Array.isArray(message.sources) && message.sources.length > 0 && (
                       <div className="message-sources">
                         <div
                           className="source-trigger-wrap"
@@ -1800,8 +2230,11 @@ function ChatPage({ user, onUserChange, onToast }) {
                             type="button"
                             className={`source-trigger ${expandedSourceMessages.has(message.id) ? 'open' : ''}`}
                             onClick={() => toggleMessageSources(message.id)}
+                            aria-expanded={expandedSourceMessages.has(message.id)}
                           >
-                            Source
+                            <Database size={14} aria-hidden="true" />
+                            <span>Used {message.sources.length} {message.sources.length === 1 ? 'source' : 'sources'}</span>
+                            <ChevronDown size={14} className="source-trigger-chevron" aria-hidden="true" />
                           </button>
 
                           {hoveredSourceMessage === message.id && !expandedSourceMessages.has(message.id) && (
@@ -1849,6 +2282,19 @@ function ChatPage({ user, onUserChange, onToast }) {
                         )}
                       </div>
                     )}
+
+                    <div className="bubble">
+                      {message.role === 'assistant' ? renderAssistantText(message.text, message) : message.text}
+                      {message.action?.to && (
+                        <Link className="message-action-link" to={message.action.to}>
+                          {message.action.label || 'Open'}
+                        </Link>
+                      )}
+                      {message.role === 'assistant' && message.streaming && !message.activity && !message.text && <span className="typing-cursor" aria-hidden="true" />}
+                      {message.role === 'assistant' && message.interrupted && (
+                        <span className="response-interrupted" role="status">Response interrupted</span>
+                      )}
+                    </div>
 
                     <span>{message.role === 'user' ? message.ts : `Ragkno • ${message.ts}`}</span>
                   </div>
@@ -1997,12 +2443,14 @@ function ChatPage({ user, onUserChange, onToast }) {
                   </div>
 
                   <button
-                    type="submit"
-                    className="send-btn"
-                    disabled={!input.trim() || loading}
-                    title="Send message"
+                    type={loading ? 'button' : 'submit'}
+                    className={`send-btn ${loading ? 'is-stop' : ''}`}
+                    disabled={!loading && !input.trim()}
+                    onClick={loading ? () => abortRef.current?.abort() : undefined}
+                    title={loading ? 'Stop response' : 'Send message'}
+                    aria-label={loading ? 'Stop response' : 'Send message'}
                   >
-                    <ArrowUp size={16} strokeWidth={2.5} />
+                    {loading ? <span className="stop-square" /> : <ArrowUp size={16} strokeWidth={2.5} />}
                   </button>
                 </div>
               </form>
@@ -2071,20 +2519,13 @@ function ChatPage({ user, onUserChange, onToast }) {
         onClose={() => setSettingsModalOpen(false)}
         initialTab={settingsModalTab}
         user={user}
-        onClearHistory={() => {
-          setThreads([])
-          setActiveThreadId(null)
-          try {
-            localStorage.removeItem(CHAT_THREADS_KEY)
-            localStorage.removeItem(ACTIVE_THREAD_KEY)
-          } catch {}
-          onToast?.({ type: 'info', message: t('historyCleared') || 'Chat history cleared.' })
-        }}
+        conversationData={threads}
+        onClearHistory={() => { void clearAllHistory() }}
         onToast={onToast}
-        onNavigateData={() => setAppView('data')}
+        onNavigateData={() => navigate('/chat/data')}
         onSampleQuestion={(q) => {
           setInput(q)
-          setAppView('chat')
+          navigate('/chat')
         }}
         onLogout={handleLogout}
         onOpenFeedback={() => {
@@ -2116,11 +2557,28 @@ function ChatPage({ user, onUserChange, onToast }) {
 }
 
 function ScrollToTop() {
-  const { pathname } = useLocation()
+  const { pathname, hash } = useLocation()
 
   useEffect(() => {
-    window.scrollTo(0, 0)
-  }, [pathname])
+    let firstFrame = 0
+    let secondFrame = 0
+
+    if (hash) {
+      firstFrame = window.requestAnimationFrame(() => {
+        secondFrame = window.requestAnimationFrame(() => {
+          const target = document.getElementById(decodeURIComponent(hash.slice(1)))
+          target?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+        })
+      })
+    } else {
+      window.scrollTo(0, 0)
+    }
+
+    return () => {
+      window.cancelAnimationFrame(firstFrame)
+      window.cancelAnimationFrame(secondFrame)
+    }
+  }, [pathname, hash])
 
   return null
 }
@@ -2139,12 +2597,13 @@ function LenisScrollController() {
       smoothWheel: true,
     })
 
+    let frame = 0
     function raf(time) {
       lenis.raf(time)
-      window.requestAnimationFrame(raf)
+      frame = window.requestAnimationFrame(raf)
     }
 
-    const frame = window.requestAnimationFrame(raf)
+    frame = window.requestAnimationFrame(raf)
     return () => {
       window.cancelAnimationFrame(frame)
       lenis.destroy()
@@ -2260,14 +2719,19 @@ export default function App() {
           <Route path="/" element={<HomePage />} />
           <Route
             path="/login"
-            element={user ? <Navigate to="/chat" replace /> : <LoginPage onUserChange={setUser} onToast={pushToast} />}
+            element={user ? <Navigate to="/chat" replace /> : <AuthPage onUserChange={setUser} onToast={pushToast} />}
           />
+          <Route path="/privacy" element={<LegalPage kind="privacy" />} />
+          <Route path="/terms" element={<LegalPage kind="terms" />} />
+          <Route path="/cookies" element={<LegalPage kind="cookies" />} />
           <Route path="/data" element={<Navigate to="/chat/data" replace />} />
           <Route
             path="/chat/*"
             element={(
               <ProtectedRoute user={user} checkingAuth={checkingAuth}>
-                <ChatPage user={user} onUserChange={setUser} onToast={pushToast} />
+                <ChatErrorBoundary onRecover={() => window.location.assign('/chat')}>
+                  <ChatPage user={user} onUserChange={setUser} onToast={pushToast} />
+                </ChatErrorBoundary>
               </ProtectedRoute>
             )}
           />

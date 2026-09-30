@@ -85,7 +85,7 @@ export const TRANSLATIONS = {
     testing: 'testing...',
 
     accountPrivacy: 'account & privacy',
-    isolatedBadge: 'isolated & encrypted',
+    isolatedBadge: 'user-scoped access',
     shortcuts: 'keyboard shortcuts',
     shortcutSendMessage: 'send message',
     shortcutNewChat: 'new chat',

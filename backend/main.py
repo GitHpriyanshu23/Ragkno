@@ -12,16 +12,22 @@ import base64
 import hashlib
 import hmac
 import time
+import math
+import secrets
+import threading
+import re
+from collections import defaultdict, deque
 from pathlib import Path
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, File, HTTPException, Request, Response, UploadFile
+from fastapi import BackgroundTasks, FastAPI, File, HTTPException, Request, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse, StreamingResponse
 from google.auth.transport.requests import Request as GoogleAuthRequest
 from google.oauth2 import id_token
 from google_auth_oauthlib.flow import Flow
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+import bcrypt
 
 # Always load env relative to project root
 _PROJECT_ROOT = Path(__file__).parent.parent
@@ -85,7 +91,7 @@ from src.drive_loader import (
 from src.chroma_store import ChromaVectorStore
 from src.database import Database
 from src.chat_memory import ChatMemoryStore
-from src.ingest import load_uploaded_files, load_url_content
+from src.ingest import MAX_UPLOAD_BYTES, load_uploaded_file, load_url_content
 
 # ---------------------------------------------------------------------------
 # App setup
@@ -98,6 +104,12 @@ SESSION_TTL_SECONDS = 60 * 60 * 24 * 7
 APP_LOGIN_REDIRECT_URI = os.getenv("GOOGLE_APP_REDIRECT_URI", "http://localhost:8000/login/google/callback")
 SESSION_SECRET = os.getenv("RAGKNO_SESSION_SECRET") or os.getenv("GOOGLE_CLIENT_SECRET") or "ragkno-dev-session-secret"
 
+if os.getenv("ENV", "").lower() in {"production", "prod"}:
+    if SESSION_SECRET == "ragkno-dev-session-secret" or len(SESSION_SECRET) < 32:
+        raise RuntimeError("RAGKNO_SESSION_SECRET must be set to at least 32 characters in production")
+    if not FRONTEND_URL.startswith("https://"):
+        raise RuntimeError("FRONTEND_URL must use HTTPS in production")
+
 app = FastAPI(title="RAG API", version="1.0.0")
 
 _allowed_origins = [
@@ -105,6 +117,8 @@ _allowed_origins = [
     "http://127.0.0.1:5173",
     "http://localhost:5174",
     "http://127.0.0.1:5174",
+    "http://localhost:5175",
+    "http://127.0.0.1:5175",
 ]
 if FRONTEND_URL and FRONTEND_URL not in _allowed_origins:
     _allowed_origins.append(FRONTEND_URL)
@@ -127,12 +141,34 @@ app.add_middleware(
 
 _db = Database.get_instance()
 _store_instance = None
+_rag_search_instance = None
+_runtime_lock = threading.RLock()
+_login_attempts: dict[str, deque[float]] = defaultdict(deque)
+_login_attempts_lock = threading.Lock()
+_LOGIN_WINDOW_SECONDS = 15 * 60
+_LOGIN_ATTEMPT_LIMIT = 8
 
 def _get_store() -> ChromaVectorStore:
     global _store_instance
     if _store_instance is None:
         _store_instance = ChromaVectorStore(persist_dir=STORE_DIR)
     return _store_instance
+
+
+def _get_rag():
+    global _rag_search_instance
+    with _runtime_lock:
+        if _rag_search_instance is None:
+            from src.search import RAGSearch
+            _rag_search_instance = RAGSearch(persist_dir=STORE_DIR)
+        return _rag_search_instance
+
+
+def _invalidate_retrieval_cache() -> None:
+    global _rag_search_instance
+    with _runtime_lock:
+        if _rag_search_instance is not None:
+            _rag_search_instance.invalidate_caches()
 
 
 
@@ -195,6 +231,8 @@ def _session_user_from_request(request: Request) -> dict | None:
         "email": payload.get("email"),
         "name": payload.get("name") or payload.get("email") or "RagKno user",
         "picture": payload.get("picture"),
+        "provider": payload.get("provider"),
+        "csrf": payload.get("csrf"),
     }
 
 
@@ -205,12 +243,14 @@ def _is_prod_cookie() -> bool:
 def _set_session_cookie(response: Response, user_info: dict) -> None:
     now = int(time.time())
     token = _sign_payload({
-        "sub": user_info.get("sub"),
+        "sub": user_info.get("sub") or user_info.get("id"),
         "email": user_info.get("email"),
         "name": user_info.get("name"),
         "picture": user_info.get("picture"),
+        "provider": user_info.get("provider") or user_info.get("auth_provider") or "google",
         "iat": now,
         "exp": now + SESSION_TTL_SECONDS,
+        "csrf": secrets.token_urlsafe(32),
     })
     is_prod = _is_prod_cookie()
     response.set_cookie(
@@ -222,6 +262,66 @@ def _set_session_cookie(response: Response, user_info: dict) -> None:
         secure=is_prod,
         path="/",
     )
+
+
+def _require_user(request: Request, mutation: bool = False) -> dict:
+    user = _session_user_from_request(request)
+    if not user or not user.get("id"):
+        raise HTTPException(status_code=401, detail="Authentication required.")
+    if mutation:
+        origin = (request.headers.get("origin") or "").rstrip("/")
+        if not origin or origin not in _allowed_origins:
+            raise HTTPException(status_code=403, detail="Origin is not allowed.")
+        supplied = request.headers.get("x-csrf-token") or ""
+        expected = str(user.get("csrf") or "")
+        if not expected or not hmac.compare_digest(supplied, expected):
+            raise HTTPException(status_code=403, detail="Invalid CSRF token.")
+    return user
+
+
+def _require_public_auth_origin(request: Request) -> None:
+    """Password endpoints are cookie-adjacent, so only accept our browser origins."""
+    origin = (request.headers.get("origin") or "").rstrip("/")
+    if not origin or origin not in _allowed_origins:
+        raise HTTPException(status_code=403, detail="Origin is not allowed.")
+
+
+def _normalized_email(value: str) -> str:
+    email = value.strip().casefold()
+    if len(email) > 254 or not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):
+        raise HTTPException(status_code=422, detail="Enter a valid email address.")
+    return email
+
+
+def _validate_password(password: str) -> None:
+    if len(password) < 12 or len(password.encode("utf-8")) > 72:
+        raise HTTPException(status_code=422, detail="Password must be 12–72 bytes long.")
+    if not all((re.search(pattern, password) for pattern in (r"[a-z]", r"[A-Z]", r"\d", r"[^\w\s]"))):
+        raise HTTPException(status_code=422, detail="Password must include upper and lower case letters, a number, and a symbol.")
+
+
+def _login_attempt_key(request: Request, email: str) -> str:
+    client = request.client.host if request.client else "unknown"
+    return f"{client}:{email}"
+
+
+def _allow_login_attempt(key: str) -> bool:
+    now = time.time()
+    with _login_attempts_lock:
+        attempts = _login_attempts[key]
+        while attempts and now - attempts[0] > _LOGIN_WINDOW_SECONDS:
+            attempts.popleft()
+        return len(attempts) < _LOGIN_ATTEMPT_LIMIT
+
+
+def _record_failed_login(key: str) -> None:
+    with _login_attempts_lock:
+        _login_attempts[key].append(time.time())
+
+
+def _clear_login_attempts(key: str) -> None:
+    with _login_attempts_lock:
+        _login_attempts.pop(key, None)
 
 
 # ---------------------------------------------------------------------------
@@ -256,14 +356,14 @@ def login_google_callback(
             status_code=400,
             detail=f"Google login error: {error}. {error_description or ''}".strip(),
         )
-    if not code:
+    if not code or not state:
         raise HTTPException(status_code=400, detail="Missing authorization code in login callback.")
 
     flow = _build_login_flow()
-    if state:
-        code_verifier = pop_oauth_verifier(state)
-        if code_verifier:
-            flow.code_verifier = code_verifier
+    code_verifier = pop_oauth_verifier(state)
+    if not code_verifier:
+        raise HTTPException(status_code=400, detail="OAuth state is invalid or expired.")
+    flow.code_verifier = code_verifier
 
     try:
         flow.fetch_token(code=code)
@@ -275,15 +375,12 @@ def login_google_callback(
             GoogleAuthRequest(),
             os.getenv("GOOGLE_CLIENT_ID"),
         )
-        try:
-            _db.upsert_user(user_info)
-        except Exception as db_err:
-            print(f"[WARN] Failed to upsert user to DB: {db_err}")
+        stored_user = _db.upsert_user(user_info)
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Google login failed: {e}") from e
 
     response = RedirectResponse(url=f"{FRONTEND_URL}/chat")
-    _set_session_cookie(response, user_info)
+    _set_session_cookie(response, stored_user)
     return response
 
 
@@ -293,9 +390,83 @@ def auth_me(request: Request):
     if not user:
         return {"authenticated": False, "user": None}
     user_dict = dict(user)
+    csrf_token = user_dict.pop("csrf", None)
     if user.get("picture"):
         user_dict["avatar_url"] = "/auth/avatar"
-    return {"authenticated": True, "user": user_dict}
+    return {"authenticated": True, "user": user_dict, "csrf_token": csrf_token}
+
+
+class RegisterRequest(BaseModel):
+    name: str = Field(min_length=2, max_length=100)
+    email: str = Field(min_length=3, max_length=254)
+    password: str = Field(min_length=12, max_length=256)
+    terms_accepted: bool
+
+
+class PasswordLoginRequest(BaseModel):
+    email: str = Field(min_length=3, max_length=254)
+    password: str = Field(min_length=1, max_length=256)
+
+
+def _auth_response(user: dict) -> dict:
+    return {
+        "authenticated": True,
+        "user": {
+            "id": user["id"],
+            "email": user["email"],
+            "name": user.get("name") or user["email"],
+            "picture": user.get("picture") or None,
+            "provider": user.get("provider") or user.get("auth_provider") or "password",
+        },
+    }
+
+
+@app.post("/auth/register", summary="Create a password account and signed session")
+def auth_register(payload: RegisterRequest, request: Request, response: Response):
+    _require_public_auth_origin(request)
+    if not payload.terms_accepted:
+        raise HTTPException(status_code=422, detail="You must accept the Terms of Service.")
+    email = _normalized_email(payload.email)
+    _validate_password(payload.password)
+    name = " ".join(payload.name.split())
+    if len(name) < 2:
+        raise HTTPException(status_code=422, detail="Enter your name.")
+    attempt_key = _login_attempt_key(request, email)
+    if not _allow_login_attempt(attempt_key):
+        raise HTTPException(status_code=429, detail="Too many attempts. Please try again later.")
+    try:
+        rounds = max(10, min(int(os.getenv("BCRYPT_ROUNDS", "12")), 14))
+        password_hash = bcrypt.hashpw(payload.password.encode("utf-8"), bcrypt.gensalt(rounds=rounds)).decode("utf-8")
+        user = _db.create_password_user(name, email, password_hash)
+    except ValueError:
+        _record_failed_login(attempt_key)
+        raise HTTPException(status_code=409, detail="An account already exists for this email. Sign in instead.")
+    _clear_login_attempts(attempt_key)
+    _set_session_cookie(response, user)
+    return _auth_response(user)
+
+
+@app.post("/auth/login", summary="Sign in with email and password")
+def auth_password_login(payload: PasswordLoginRequest, request: Request, response: Response):
+    _require_public_auth_origin(request)
+    email = _normalized_email(payload.email)
+    attempt_key = _login_attempt_key(request, email)
+    if not _allow_login_attempt(attempt_key):
+        raise HTTPException(status_code=429, detail="Too many attempts. Please try again later.")
+    user = _db.get_password_user_by_email(email)
+    password_hash = str(user.get("password_hash") or "") if user else ""
+    valid = False
+    try:
+        valid = bool(password_hash) and bcrypt.checkpw(payload.password.encode("utf-8"), password_hash.encode("utf-8"))
+    except (ValueError, TypeError):
+        valid = False
+    if not valid:
+        _record_failed_login(attempt_key)
+        raise HTTPException(status_code=401, detail="Invalid email or password.")
+    _clear_login_attempts(attempt_key)
+    _db.record_password_login(user["id"])
+    _set_session_cookie(response, user)
+    return _auth_response(user)
 
 
 @app.get("/auth/avatar", summary="Proxy active user Google avatar image")
@@ -334,7 +505,8 @@ async def auth_avatar(request: Request, url: str | None = None):
 
 
 @app.post("/auth/logout", summary="Log out current app user")
-def auth_logout(response: Response):
+def auth_logout(request: Request, response: Response):
+    _require_user(request, mutation=True)
     is_prod = _is_prod_cookie()
     response.delete_cookie(
         SESSION_COOKIE_NAME,
@@ -362,52 +534,49 @@ class RenameThreadRequest(BaseModel):
 
 @app.get("/threads", summary="Get all chat threads for the authenticated user")
 def get_threads(request: Request):
-    user = _session_user_from_request(request)
-    if not user:
-        return {"threads": []}
+    user = _require_user(request)
     threads = _db.get_user_threads(user["id"])
     return {"threads": threads}
 
 
 @app.post("/threads", summary="Create a new chat thread")
 def create_thread(req: CreateThreadRequest, request: Request):
-    user = _session_user_from_request(request)
-    user_id = user["id"] if user else "guest"
-    thread = _db.create_thread(user_id=user_id, title=req.title, thread_id=req.id)
+    user = _require_user(request, mutation=True)
+    thread = _db.create_thread(user_id=user["id"], title=req.title, thread_id=req.id)
     return {"thread": thread}
 
 
 @app.get("/threads/{thread_id}/messages", summary="Get all messages for a thread")
 def get_thread_messages(thread_id: str, request: Request):
-    user = _session_user_from_request(request)
-    user_id = user["id"] if user else None
-    messages = _db.get_thread_messages(thread_id, user_id=user_id)
+    user = _require_user(request)
+    if not _db.get_thread(thread_id, user["id"]):
+        raise HTTPException(status_code=404, detail="Thread not found.")
+    messages = _db.get_thread_messages(thread_id, user_id=user["id"])
     return {"messages": messages}
 
 
 @app.patch("/threads/{thread_id}", summary="Rename a thread")
 def rename_thread(thread_id: str, req: RenameThreadRequest, request: Request):
-    user = _session_user_from_request(request)
-    if not user:
-        raise HTTPException(status_code=401, detail="Authentication required.")
+    user = _require_user(request, mutation=True)
     ok = _db.rename_thread(thread_id, user["id"], req.title)
-    return {"ok": ok}
+    if not ok:
+        raise HTTPException(status_code=404, detail="Thread not found.")
+    return {"ok": True}
 
 
 @app.delete("/threads/{thread_id}", summary="Delete a thread and its messages")
 def delete_thread(thread_id: str, request: Request):
-    user = _session_user_from_request(request)
-    if not user:
-        raise HTTPException(status_code=401, detail="Authentication required.")
+    user = _require_user(request, mutation=True)
     ok = _db.delete_thread(thread_id, user["id"])
-    return {"ok": ok}
+    if not ok:
+        raise HTTPException(status_code=404, detail="Thread not found.")
+    return {"ok": True}
 
 
 @app.get("/auth/url", summary="Get Google OAuth consent URL")
 def auth_url(request: Request):
-    user = _session_user_from_request(request)
-    user_id = user["id"] if user else None
-    url = get_auth_url(user_id=user_id)
+    user = _require_user(request)
+    url = get_auth_url(user_id=user["id"])
     return {"url": url}
 
 
@@ -426,10 +595,12 @@ def auth_callback(
     if not code:
         return RedirectResponse(url=f"{FRONTEND_URL}/chat/data?error=missing_code")
 
-    user = _session_user_from_request(request)
-    user_id = user["id"] if user else None
+    user = _require_user(request)
+    user_id = user["id"]
 
     try:
+        if not state:
+            raise ValueError("missing_state")
         exchange_code(code, state=state, user_id=user_id)
     except Exception as e:
         print(f"[ERROR] Token exchange failed: {e}")
@@ -440,10 +611,8 @@ def auth_callback(
 
 @app.get("/auth/status", summary="Check if Drive is connected for active user")
 def auth_status(request: Request):
-    user = _session_user_from_request(request)
-    user_id = user["id"] if user else None
-    if not user_id:
-        return {"connected": False}
+    user = _require_user(request)
+    user_id = user["id"]
     return {"connected": is_connected(user_id)}
 
 
@@ -454,10 +623,8 @@ def auth_status(request: Request):
 
 @app.get("/drive/files", summary="List PDF/TXT files in Google Drive for active user")
 def drive_files(request: Request):
-    user = _session_user_from_request(request)
-    user_id = user["id"] if user else None
-    if not user_id:
-        raise HTTPException(status_code=401, detail="Authentication required.")
+    user = _require_user(request)
+    user_id = user["id"]
     creds = load_credentials(user_id)
     if not creds:
         raise HTTPException(status_code=401, detail="Not connected to Google Drive.")
@@ -477,7 +644,19 @@ class UrlIngestRequest(BaseModel):
 
 
 class UnindexRequest(BaseModel):
-    key: str
+    source_id: str | None = None
+    key: str | None = None
+
+
+def _source_result(item: dict, status: str = "indexed", error: str | None = None) -> dict:
+    return {
+        "source_id": item.get("source_id"),
+        "display_name": item.get("source_name") or item.get("source") or item.get("source_key"),
+        "status": status,
+        "page_count": int(item.get("page_count", 0) or 0),
+        "chunk_count": int(item.get("chunk_count", 0) or 0),
+        "error": error,
+    }
 
 
 def _load_index_metadata() -> list[dict]:
@@ -498,35 +677,43 @@ def _source_type(source: str) -> str:
 
 @app.get("/ingest/sources", summary="List unique indexed sources for active user")
 def ingest_sources(request: Request):
-    user = _session_user_from_request(request)
-    user_id = user["id"] if user else None
-    if not user_id:
-        return {"count": 0, "sources": []}
+    user = _require_user(request)
+    user_id = user["id"]
 
     db_sources = _db.get_user_sources(user_id)
     chroma_sources = _get_store().get_user_sources(user_id=user_id)
 
     seen = set()
+    seen_display = set()
     sources = []
 
-    for s in db_sources:
-        k = str(s.get("source_key") or "").lower().rstrip("/")
-        if k and k not in seen:
-            seen.add(k)
+    for s in chroma_sources:
+        source_id = str(s.get("source_id") or "")
+        source_key = str(s.get("source_key") or s.get("source") or "")
+        if source_id and source_key not in seen:
+            seen.add(source_key)
+            seen_display.add(str(s.get("title") or s.get("source") or source_key).casefold())
             sources.append({
-                "key": k,
-                "source": s.get("source_name") or k,
-                "type": s.get("source_type") or _source_type(k),
+                "key": source_id,
+                "source_id": source_id,
+                "source": s.get("title") or s.get("source") or source_key,
+                "type": s.get("source_type") or _source_type(source_key),
+                "chunk_count": s.get("chunk_count", 0),
             })
 
-    for s in chroma_sources:
-        k = str(s.get("source") or "").lower().rstrip("/")
-        if k and k not in seen:
-            seen.add(k)
+    for s in db_sources:
+        source_key = str(s.get("source_key") or "")
+        source_id = str(s.get("id") or "")
+        display_name = str(s.get("source_name") or source_key)
+        if source_id and source_key not in seen and display_name.casefold() not in seen_display:
+            seen.add(source_key)
+            seen_display.add(display_name.casefold())
             sources.append({
-                "key": k,
-                "source": s.get("title") or k,
-                "type": s.get("source_type") or _source_type(k),
+                "key": source_id,
+                "source_id": source_id,
+                "source": s.get("source_name") or source_key,
+                "type": s.get("source_type") or _source_type(source_key),
+                "chunk_count": s.get("chunk_count", 0),
             })
 
     return {"count": len(sources), "sources": sources}
@@ -534,21 +721,21 @@ def ingest_sources(request: Request):
 
 @app.post("/ingest/unindex", summary="Remove one indexed source from Chroma store")
 def ingest_unindex(req: UnindexRequest, request: Request):
-    key = str(req.key or "").strip().lower().rstrip("/")
+    user = _require_user(request, mutation=True)
+    key = str(req.source_id or req.key or "").strip()
     if not key:
         raise HTTPException(status_code=400, detail="Source key is required.")
 
-    user = _session_user_from_request(request)
-    user_id = user["id"] if user else None
+    user_id = user["id"]
 
     try:
         store = _get_store()
+        matching = next((item for item in store.get_user_sources(user_id) if item.get("source_id") == key), None)
         removed_chunks = store.remove_source(key, user_id=user_id)
-        if user_id:
-            _db.delete_user_source(user_id, key)
-
-        global _rag_search_instance
-        _rag_search_instance = None
+        _db.delete_user_source(user_id, key)
+        if matching and matching.get("source_key"):
+            _db.delete_user_source(user_id, str(matching["source_key"]))
+        _invalidate_retrieval_cache()
 
         return {
             "ok": True,
@@ -561,10 +748,8 @@ def ingest_unindex(req: UnindexRequest, request: Request):
 
 @app.post("/drive/sync", summary="Ingest selected Drive files into Chroma vector store")
 def drive_sync(request: Request, req: DriveSyncRequest | None = None):
-    user = _session_user_from_request(request)
-    user_id = user["id"] if user else None
-    if not user_id:
-        raise HTTPException(status_code=401, detail="Authentication required.")
+    user = _require_user(request, mutation=True)
+    user_id = user["id"]
 
     creds = load_credentials(user_id)
     if not creds:
@@ -581,71 +766,112 @@ def drive_sync(request: Request, req: DriveSyncRequest | None = None):
             return {"message": "No supported documents found in Drive.", "count": 0}
 
         store = _get_store()
-        store.add_documents(docs, user_id=user_id)
-
-        for doc in docs:
-            src = doc.metadata.get("source", "Google Drive File")
-            _db.record_user_source(user_id, source_key=src, source_name=src, source_type="drive", chunk_count=1)
-
-        # Invalidate cache so it reloads the new index on next query
-        global _rag_search_instance
-        _rag_search_instance = None
+        indexed = store.add_documents(docs, user_id=user_id)
+        for item in indexed:
+            _db.record_user_source(user_id, source_key=item["source_key"], source_name=item["source_name"], source_type="drive", chunk_count=item["chunk_count"])
+        _invalidate_retrieval_cache()
 
         if selected_file_ids is not None:
             return {
                 "message": f"Synced {len(docs)} document pages from selected files into the vector store.",
-                "count": len(docs),
+                "count": sum(item["chunk_count"] for item in indexed),
                 "selected_files": len(selected_file_ids),
+                "sources": [_source_result(item) for item in indexed],
             }
 
-        return {"message": f"Synced {len(docs)} document pages into the vector store.", "count": len(docs)}
+        return {"message": f"Synced {len(indexed)} source(s) into the vector store.", "count": sum(item["chunk_count"] for item in indexed), "sources": [_source_result(item) for item in indexed]}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.delete("/drive/disconnect", summary="Disconnect Google Drive for active user")
 def drive_disconnect(request: Request):
-    user = _session_user_from_request(request)
-    user_id = user["id"] if user else None
-    if not user_id:
-        raise HTTPException(status_code=401, detail="Authentication required.")
+    user = _require_user(request, mutation=True)
+    user_id = user["id"]
     disconnect(user_id)
     return {"message": "Disconnected from Google Drive."}
 
 
 @app.post("/ingest/files", summary="Upload local files and index into Chroma")
 async def ingest_files(request: Request, files: list[UploadFile] = File(...)):
+    user = _require_user(request, mutation=True)
     if not files:
         raise HTTPException(status_code=400, detail="No files provided.")
 
-    payloads = []
+    if len(files) > 20:
+        raise HTTPException(status_code=400, detail="A maximum of 20 files can be uploaded at once.")
+    allowed_mimes = {
+        ".pdf": {"application/pdf"},
+        ".txt": {"text/plain"},
+        ".docx": {"application/vnd.openxmlformats-officedocument.wordprocessingml.document"},
+    }
+    documents = []
+    preliminary = []
+    seen_names = set()
     for file in files:
-        content = await file.read()
-        payloads.append((file.filename or "uploaded-file", content))
+        name = (file.filename or "uploaded-file").strip()
+        suffix = Path(name).suffix.lower()
+        result = {"source_id": None, "display_name": name, "status": "failed", "page_count": 0, "chunk_count": 0, "error": None}
+        if name in seen_names:
+            result["error"] = "Duplicate filename in this upload"
+            preliminary.append(result)
+            continue
+        seen_names.add(name)
+        if suffix not in allowed_mimes:
+            result["error"] = f"Unsupported file extension: {suffix or 'unknown'}"
+            preliminary.append(result)
+            continue
+        content_type = (file.content_type or "").split(";", 1)[0].lower()
+        if content_type not in {"", "application/octet-stream", *allowed_mimes[suffix]}:
+            result["error"] = f"Content type '{content_type}' does not match {suffix}"
+            preliminary.append(result)
+            continue
+        content = await file.read(MAX_UPLOAD_BYTES + 1)
+        if len(content) > MAX_UPLOAD_BYTES:
+            result["error"] = "File exceeds the 50MB limit"
+            preliminary.append(result)
+            continue
+        try:
+            file_docs = load_uploaded_file(name, content)
+            if not file_docs:
+                raise ValueError("File is empty or contains no extractable text")
+            documents.extend(file_docs)
+            result["status"] = "ready"
+            result["page_count"] = len(file_docs)
+        except Exception as error:
+            result["error"] = str(error)
+        preliminary.append(result)
 
     try:
-        docs = load_uploaded_files(payloads)
-        if not docs:
-            return {"ok": True, "message": "No extractable content found.", "indexed_chunks": 0, "source_count": 0}
+        if not documents:
+            return {"ok": False, "message": "No files contained indexable text.", "indexed_chunks": 0, "source_count": 0, "sources": preliminary}
 
-        user = _session_user_from_request(request)
-        user_id = user["id"] if user else "guest"
+        user_id = user["id"]
 
         store = _get_store()
-        store.add_documents(docs, user_id=user_id)
+        indexed = store.add_documents(documents, user_id=user_id)
+        for item in indexed:
+            _db.record_user_source(user_id, source_key=item["source_key"], source_name=item["source_name"], source_type="upload", chunk_count=item["chunk_count"])
+        _invalidate_retrieval_cache()
 
-        for file in files:
-            fname = file.filename or "uploaded-file"
-            _db.record_user_source(user_id, source_key=fname, source_name=fname, source_type="file", chunk_count=len(docs))
-
-        global _rag_search_instance
-        _rag_search_instance = None
+        indexed_by_name = {str(item.get("source_name")): item for item in indexed}
+        results = []
+        for result in preliminary:
+            item = indexed_by_name.get(result["display_name"])
+            if item and result["status"] == "ready":
+                results.append(_source_result(item))
+            else:
+                if result["status"] == "ready":
+                    result["status"] = "failed"
+                    result["error"] = "No chunks were produced"
+                results.append(result)
 
         return {
             "ok": True,
-            "message": f"Indexed content from {len(files)} uploaded file(s).",
-            "indexed_chunks": len(docs),
-            "source_count": len(files),
+            "message": f"Indexed {len(indexed)} of {len(files)} uploaded file(s).",
+            "indexed_chunks": sum(item["chunk_count"] for item in indexed),
+            "source_count": len(indexed),
+            "sources": results,
         }
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -655,27 +881,26 @@ async def ingest_files(request: Request, files: list[UploadFile] = File(...)):
 
 @app.post("/ingest/url", summary="Fetch and index one website URL")
 def ingest_url(req: UrlIngestRequest, request: Request):
+    user = _require_user(request, mutation=True)
     if not req.url.strip():
         raise HTTPException(status_code=400, detail="URL cannot be empty.")
 
     try:
         docs = load_url_content(req.url.strip())
-        user = _session_user_from_request(request)
-        user_id = user["id"] if user else "guest"
+        user_id = user["id"]
 
         store = _get_store()
-        store.add_documents(docs, user_id=user_id)
-
-        _db.record_user_source(user_id, source_key=req.url.strip(), source_name=req.url.strip(), source_type="url", chunk_count=len(docs))
-
-        global _rag_search_instance
-        _rag_search_instance = None
+        indexed = store.add_documents(docs, user_id=user_id)
+        item = indexed[0]
+        _db.record_user_source(user_id, source_key=item["source_key"], source_name=item["source_name"], source_type="url", chunk_count=item["chunk_count"])
+        _invalidate_retrieval_cache()
 
         return {
             "ok": True,
             "message": "URL content indexed successfully.",
-            "indexed_chunks": len(docs),
+            "indexed_chunks": item["chunk_count"],
             "source_count": 1,
+            "sources": [_source_result(item) for item in indexed],
         }
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -689,17 +914,16 @@ def ingest_url(req: UrlIngestRequest, request: Request):
 
 
 class QueryRequest(BaseModel):
-    query: str
-    top_k: int = 5
-    session_id: str | None = None
-    thread_id: str | None = None
-    model: str | None = None
+    query: str = Field(min_length=1, max_length=8000)
+    top_k: int = Field(default=5, ge=1, le=20)
+    thread_id: str = Field(min_length=1, max_length=160)
+    request_id: str = Field(min_length=8, max_length=160)
+    model: str | None = Field(default=None, min_length=1, max_length=160, pattern=r"^[A-Za-z0-9._:/-]+$")
     use_reranker: bool = True
-    language: str | None = None
+    language: str | None = Field(default=None, max_length=32)
+    source_ids: list[str] | None = Field(default=None, max_length=100)
 
 
-# Global cache for RAGSearch
-_rag_search_instance = None
 _memory_store = ChatMemoryStore()
 
 
@@ -731,7 +955,8 @@ def _prepare_sources_for_client(raw_sources: list[dict]) -> list[dict]:
                 "type": str(item.get("type", "unknown") or "unknown"),
                 "preview": str(item.get("preview", "") or ""),
                 "text": str(item.get("text", "") or ""),
-                "score": float(item.get("score", 0.0) or 0.0),
+                "score": float(item.get("score", 0.0) or 0.0) if math.isfinite(float(item.get("score", 0.0) or 0.0)) else 0.0,
+                "source_id": item.get("source_id"),
                 "page": item.get("page"),
                 "title": str(item.get("title", "") or ""),
                 "file_id": item.get("file_id"),
@@ -763,102 +988,185 @@ def _maybe_refresh_summary(session_id: str, rag_search_instance, user_id: str = 
     _memory_store.upsert_summary(session_id, updated_summary, summarize_now[-1]["id"], user_id=user_id)
 
 
+def _refresh_summary_safely(session_id: str, rag_search_instance, user_id: str = "default") -> None:
+    try:
+        _maybe_refresh_summary(session_id, rag_search_instance, user_id=user_id)
+    except Exception as error:
+        print(f"[WARN] Conversation summary refresh failed: {error}")
+
+
 def _sse_event(event_name: str, payload: dict) -> str:
-    return f"event: {event_name}\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
+    return f"event: {event_name}\ndata: {json.dumps(payload, ensure_ascii=False, allow_nan=False)}\n\n"
+
+
+def _query_fingerprint(req: QueryRequest) -> str:
+    payload = {
+        "query": req.query.strip(),
+        "thread_id": req.thread_id.strip(),
+        "top_k": req.top_k,
+        "model": req.model,
+        "use_reranker": req.use_reranker,
+        "language": req.language,
+        "source_ids": sorted(set(req.source_ids or [])),
+    }
+    return hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
+
+
+def _is_simple_greeting(value: str) -> bool:
+    normalized = re.sub(r"[^a-z\s]", " ", str(value or "").lower())
+    normalized = re.sub(r"\s+", " ", normalized).strip()
+    return normalized in {
+        "hi", "hello", "hey", "hiya", "howdy", "good morning",
+        "good afternoon", "good evening", "hi there", "hello there", "hey there",
+    }
+
+
+def _local_greeting_answer(user: dict) -> str:
+    display = str(user.get("name") or user.get("email") or "there").strip()
+    first_name = display.split(" ")[0].split("@")[0] or "there"
+    return (
+        f"Hi {first_name}! Please provide a little more context about what you want to find, "
+        "and I’ll search your connected documents for the most relevant information."
+    )
 
 
 @app.post("/memory/reset", summary="Reset chat memory for a session")
 def reset_memory(req: SessionRequest, request: Request):
     if not req.session_id.strip():
         raise HTTPException(status_code=400, detail="session_id is required")
-    user = _session_user_from_request(request)
-    user_id = user["id"] if user else "default"
+    user = _require_user(request, mutation=True)
+    user_id = user["id"]
+    if not _db.get_thread(req.session_id.strip(), user_id):
+        raise HTTPException(status_code=404, detail="Thread not found.")
     _memory_store.clear_session(req.session_id.strip(), user_id=user_id)
     return {"ok": True, "message": "Session memory cleared."}
 
 
 @app.post("/query", summary="RAG query — retrieve and generate answer")
 def handle_query(req: QueryRequest, request: Request):
-    global _rag_search_instance
-
     if not req.query.strip():
         raise HTTPException(status_code=400, detail="Query cannot be empty.")
-
+    user = _require_user(request, mutation=True)
+    user_id = user["id"]
+    thread_id = req.thread_id.strip()
+    if not _db.get_thread(thread_id, user_id):
+        raise HTTPException(status_code=404, detail="Thread not found.")
+    run = _db.begin_query_request(req.request_id, user_id, thread_id, _query_fingerprint(req))
+    if run.get("status") == "complete":
+        cached = _db.decode_query_request(run)
+        return {"answer": cached.get("answer") or "", "query": req.query, "thread_id": thread_id, "request_id": req.request_id, "sources": cached.get("sources", []), "replayed": True, "local": _is_simple_greeting(req.query)}
+    if run.get("status") != "created":
+        raise HTTPException(status_code=409, detail="This request is already running.")
     try:
-        from src.search import RAGSearch
-        if _rag_search_instance is None:
-            _rag_search_instance = RAGSearch(persist_dir=STORE_DIR)
+        if _is_simple_greeting(req.query):
+            answer = _local_greeting_answer(user)
+            _db.complete_query_exchange(req.request_id, thread_id, user_id, req.query.strip(), answer, [])
+            return {
+                "answer": answer,
+                "query": req.query,
+                "thread_id": thread_id,
+                "request_id": req.request_id,
+                "sources": [],
+                "local": True,
+            }
 
-        user = _session_user_from_request(request)
-        user_id = user["id"] if user else None
-        session_id = (req.thread_id or req.session_id or "").strip() or f"anon-{uuid.uuid4().hex[:12]}"
-        uid = user_id or "default"
-
-        memory_context = _memory_store.build_memory_context(session_id=session_id, recent_limit=8, user_id=uid)
-
-        response_payload = _rag_search_instance.answer_with_sources(
+        rag = _get_rag()
+        memory_context = _memory_store.build_memory_context(session_id=thread_id, recent_limit=8, user_id=user_id)
+        response_payload = rag.answer_with_sources(
             query=req.query.strip(),
             top_k=req.top_k,
             memory_context=memory_context,
             user_id=user_id,
             model=req.model,
             use_reranker=req.use_reranker,
+            source_ids=req.source_ids,
+            language=req.language,
         )
         answer = response_payload.get("answer", "")
         sources = _prepare_sources_for_client(response_payload.get("sources", []))
 
-        _memory_store.append_turn(session_id, "user", req.query.strip(), user_id=uid)
-        _memory_store.append_turn(session_id, "assistant", answer, user_id=uid)
-        _maybe_refresh_summary(session_id, _rag_search_instance, user_id=uid)
-
-        if user_id:
-            _db.append_message(thread_id=session_id, user_id=user_id, role="user", text_content=req.query.strip())
-            _db.append_message(thread_id=session_id, user_id=user_id, role="assistant", text_content=answer, sources=sources)
+        _db.complete_query_exchange(req.request_id, thread_id, user_id, req.query.strip(), answer, sources)
+        try:
+            _memory_store.append_turn(thread_id, "user", req.query.strip(), user_id=user_id)
+            _memory_store.append_turn(thread_id, "assistant", answer, user_id=user_id)
+            _maybe_refresh_summary(thread_id, rag, user_id=user_id)
+        except Exception as memory_error:
+            print(f"[WARN] Answer was saved but memory refresh failed: {memory_error}")
 
         return {
             "answer": answer,
             "query": req.query,
-            "session_id": session_id,
+            "thread_id": thread_id,
+            "request_id": req.request_id,
             "sources": sources,
         }
     except Exception as e:
+        _db.fail_query_request(req.request_id, user_id, str(e))
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/query/stream", summary="RAG query with server-sent events")
-def handle_query_stream(req: QueryRequest, request: Request):
-    global _rag_search_instance
-
+def handle_query_stream(req: QueryRequest, request: Request, background_tasks: BackgroundTasks):
     if not req.query.strip():
         raise HTTPException(status_code=400, detail="Query cannot be empty.")
-
-    from src.search import RAGSearch
-    if _rag_search_instance is None:
-        _rag_search_instance = RAGSearch(persist_dir=STORE_DIR)
-
-    user = _session_user_from_request(request)
-    user_id = user["id"] if user else None
-    session_id = (req.thread_id or req.session_id or "").strip() or f"anon-{uuid.uuid4().hex[:12]}"
-    uid = user_id or "default"
-
-    memory_context = _memory_store.build_memory_context(session_id=session_id, recent_limit=8, user_id=uid)
+    user = _require_user(request, mutation=True)
+    user_id = user["id"]
+    thread_id = req.thread_id.strip()
+    if not _db.get_thread(thread_id, user_id):
+        raise HTTPException(status_code=404, detail="Thread not found.")
+    run = _db.begin_query_request(req.request_id, user_id, thread_id, _query_fingerprint(req))
+    if run.get("status") not in {"created", "complete"}:
+        raise HTTPException(status_code=409, detail="This request is already running.")
 
     def event_generator():
         try:
-            sources, token_iter = _rag_search_instance.stream_answer_with_sources(
+            if run.get("status") == "complete":
+                cached = _db.decode_query_request(run)
+                answer = cached.get("answer") or ""
+                sources = cached.get("sources") or []
+                local = _is_simple_greeting(req.query)
+                yield _sse_event("meta", {"query": req.query, "thread_id": thread_id, "request_id": req.request_id, "sources": sources, "replayed": True, "local": local})
+                if answer:
+                    if local:
+                        time.sleep(0.18)
+                        for chunk in re.findall(r"\S+\s*", answer):
+                            yield _sse_event("token", {"request_id": req.request_id, "token": chunk})
+                            time.sleep(0.025)
+                    else:
+                        yield _sse_event("token", {"request_id": req.request_id, "token": answer})
+                yield _sse_event("done", {"query": req.query, "thread_id": thread_id, "request_id": req.request_id, "answer": answer, "sources": sources, "replayed": True, "local": local})
+                return
+
+            if _is_simple_greeting(req.query):
+                answer = _local_greeting_answer(user)
+                _db.complete_query_exchange(req.request_id, thread_id, user_id, req.query.strip(), answer, [])
+                yield _sse_event("meta", {"query": req.query, "thread_id": thread_id, "request_id": req.request_id, "sources": [], "local": True})
+                time.sleep(0.18)
+                for chunk in re.findall(r"\S+\s*", answer):
+                    yield _sse_event("token", {"request_id": req.request_id, "token": chunk})
+                    time.sleep(0.025)
+                yield _sse_event("done", {"query": req.query, "thread_id": thread_id, "request_id": req.request_id, "answer": answer, "sources": [], "local": True})
+                return
+
+            rag = _get_rag()
+            memory_context = _memory_store.build_memory_context(session_id=thread_id, recent_limit=8, user_id=user_id)
+            sources, token_iter = rag.stream_answer_with_sources(
                 query=req.query.strip(),
                 top_k=req.top_k,
                 memory_context=memory_context,
                 user_id=user_id,
                 model=req.model,
                 use_reranker=req.use_reranker,
+                source_ids=req.source_ids,
+                language=req.language,
             )
             prepared_sources = _prepare_sources_for_client(sources)
             yield _sse_event(
                 "meta",
                 {
                     "query": req.query,
-                    "session_id": session_id,
+                    "thread_id": thread_id,
+                    "request_id": req.request_id,
                     "sources": prepared_sources,
                 },
             )
@@ -869,28 +1177,33 @@ def handle_query_stream(req: QueryRequest, request: Request):
                 if not text:
                     continue
                 answer_parts.append(text)
-                yield _sse_event("token", {"token": text})
+                yield _sse_event("token", {"request_id": req.request_id, "token": text})
 
             answer = "".join(answer_parts).strip() or "No relevant documents found."
-            _memory_store.append_turn(session_id, "user", req.query.strip(), user_id=uid)
-            _memory_store.append_turn(session_id, "assistant", answer, user_id=uid)
-            _maybe_refresh_summary(session_id, _rag_search_instance, user_id=uid)
-
-            if user_id:
-                _db.append_message(thread_id=session_id, user_id=user_id, role="user", text_content=req.query.strip())
-                _db.append_message(thread_id=session_id, user_id=user_id, role="assistant", text_content=answer, sources=prepared_sources)
+            _db.complete_query_exchange(req.request_id, thread_id, user_id, req.query.strip(), answer, prepared_sources)
+            try:
+                _memory_store.append_turn(thread_id, "user", req.query.strip(), user_id=user_id)
+                _memory_store.append_turn(thread_id, "assistant", answer, user_id=user_id)
+                # Summarization may require another model call. Run it after
+                # the response has completed so it never keeps the composer
+                # in its stop/disabled state after the answer is visible.
+                background_tasks.add_task(_refresh_summary_safely, thread_id, rag, user_id)
+            except Exception as memory_error:
+                print(f"[WARN] Answer was saved but memory refresh failed: {memory_error}")
 
             yield _sse_event(
                 "done",
                 {
                     "query": req.query,
-                    "session_id": session_id,
+                    "thread_id": thread_id,
+                    "request_id": req.request_id,
                     "answer": answer,
                     "sources": prepared_sources,
                 },
             )
         except Exception as e:
-            yield _sse_event("error", {"message": str(e)})
+            _db.fail_query_request(req.request_id, user_id, str(e))
+            yield _sse_event("error", {"request_id": req.request_id, "message": str(e), "interrupted": True})
 
     return StreamingResponse(
         event_generator(),
@@ -914,8 +1227,8 @@ class FeedbackRequest(BaseModel):
 
 @app.post("/feedback", summary="Submit user feedback")
 def submit_feedback(payload: FeedbackRequest, request: Request):
-    user = _session_user_from_request(request)
-    user_id = user["id"] if user else None
+    user = _require_user(request, mutation=True)
+    user_id = user["id"]
     feedback_text = (payload.feedback or "").strip()
     rating = (payload.rating or "neutral").strip() or "neutral"
     if not feedback_text:
@@ -926,10 +1239,8 @@ def submit_feedback(payload: FeedbackRequest, request: Request):
 
 @app.get("/feedback", summary="List tracked feedback")
 def list_feedbacks_route(request: Request, limit: int = 50):
-    user = _session_user_from_request(request)
-    user_id = user["id"] if user else None
-    # Return all feedbacks so developer/admin can track user feedback
-    feedbacks = _db.list_feedbacks(user_id=None, limit=min(limit, 100))
+    user = _require_user(request)
+    feedbacks = _db.list_feedbacks(user_id=user["id"], limit=min(max(limit, 1), 100))
     return {"ok": True, "feedbacks": feedbacks}
 
 
@@ -940,7 +1251,45 @@ def list_feedbacks_route(request: Request, limit: int = 50):
 
 @app.get("/health")
 def health():
+    provider = (os.getenv("LLM_PROVIDER") or ("agentrouter" if (os.getenv("AGENTROUTER_API_KEY") or os.getenv("AGENT_ROUTER_API_KEY")) else "google")).strip().lower()
+    return {
+        "status": "ok",
+        "llm": {
+            "provider": provider,
+            "model": os.getenv("AGENTROUTER_MODEL", "gpt-5.5") if provider == "agentrouter" else os.getenv("GOOGLE_LLM_MODEL", "gemini-2.5-flash"),
+            "configured": bool(
+                (os.getenv("AGENTROUTER_API_KEY") or os.getenv("AGENT_ROUTER_API_KEY"))
+                if provider == "agentrouter"
+                else os.getenv("GOOGLE_API_KEY")
+            ),
+        },
+    }
+
+
+@app.get("/health/live")
+def health_live():
     return {"status": "ok"}
+
+
+@app.get("/health/ready")
+def health_ready():
+    checks = {"database": False, "vector_store": False, "llm_configured": False}
+    try:
+        with _db.engine.connect() as connection:
+            from sqlalchemy import text
+            connection.execute(text("SELECT 1"))
+        checks["database"] = True
+    except Exception:
+        pass
+    try:
+        _get_store().collection.count()
+        checks["vector_store"] = True
+    except Exception:
+        pass
+    checks["llm_configured"] = bool(os.getenv("GOOGLE_API_KEY") or os.getenv("AGENTROUTER_API_KEY") or os.getenv("AGENT_ROUTER_API_KEY"))
+    if not all(checks.values()):
+        raise HTTPException(status_code=503, detail={"status": "not_ready", "checks": checks})
+    return {"status": "ready", "checks": checks}
 
 
 

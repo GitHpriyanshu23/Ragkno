@@ -1,17 +1,20 @@
 import tempfile
+import ipaddress
+import socket
 from pathlib import Path
 from typing import Iterable, List
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 import requests
 from bs4 import BeautifulSoup
 from langchain_core.documents import Document
 from langchain_community.document_loaders import Docx2txtLoader, PyPDFLoader, TextLoader
-from requests.exceptions import SSLError
 
 
 SUPPORTED_EXTENSIONS = {".pdf", ".txt", ".docx"}
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024
+MAX_URL_BYTES = 5 * 1024 * 1024
+MAX_REDIRECTS = 5
 
 
 def _safe_suffix(name: str) -> str:
@@ -40,6 +43,7 @@ def load_uploaded_file(file_name: str, content: bytes) -> List[Document]:
         else:
             docs = Docx2txtLoader(str(tmp_path)).load()
 
+        docs = [doc for doc in docs if str(getattr(doc, "page_content", "") or "").strip()]
         for doc in docs:
             meta = dict(doc.metadata or {})
             meta["source"] = file_name
@@ -63,18 +67,58 @@ def validate_url(url: str) -> str:
         raise ValueError("Only http/https URLs are supported")
     if not parsed.netloc:
         raise ValueError("Invalid URL")
+    if parsed.username or parsed.password:
+        raise ValueError("URLs containing credentials are not allowed")
+    hostname = parsed.hostname
+    if not hostname:
+        raise ValueError("URL hostname is required")
+    try:
+        addresses = {item[4][0] for item in socket.getaddrinfo(hostname, parsed.port or (443 if parsed.scheme == "https" else 80), type=socket.SOCK_STREAM)}
+    except socket.gaierror as exc:
+        raise ValueError("URL hostname could not be resolved") from exc
+    for address in addresses:
+        ip = ipaddress.ip_address(address)
+        if not ip.is_global:
+            raise ValueError("Private, loopback, link-local, and reserved addresses are not allowed")
     return parsed.geturl()
 
 
 def load_url_content(url: str, timeout: int = 15) -> List[Document]:
     clean_url = validate_url(url)
-    try:
-        response = requests.get(clean_url, timeout=timeout, headers={"User-Agent": "RAGKNOBot/1.0"})
-    except SSLError:
-        response = requests.get(clean_url, timeout=timeout, headers={"User-Agent": "RAGKNOBot/1.0"}, verify=False)
+    response = None
+    session = requests.Session()
+    for _ in range(MAX_REDIRECTS + 1):
+        response = session.get(clean_url, timeout=timeout, headers={"User-Agent": "RAGKNOBot/1.0"}, allow_redirects=False, stream=True)
+        if response.is_redirect or response.is_permanent_redirect:
+            target = response.headers.get("location")
+            response.close()
+            if not target:
+                raise ValueError("Redirect response did not include a destination")
+            clean_url = validate_url(urljoin(clean_url, target))
+            continue
+        break
+    else:
+        raise ValueError("Too many redirects")
+    if response is None:
+        raise ValueError("URL could not be fetched")
     response.raise_for_status()
+    content_type = response.headers.get("content-type", "").split(";", 1)[0].strip().lower()
+    if content_type not in {"text/html", "text/plain", "application/xhtml+xml"}:
+        response.close()
+        raise ValueError("URL must return HTML or plain text")
+    chunks = []
+    total = 0
+    for block in response.iter_content(chunk_size=64 * 1024):
+        total += len(block)
+        if total > MAX_URL_BYTES:
+            response.close()
+            raise ValueError("URL response exceeds 5MB limit")
+        chunks.append(block)
+    encoding = response.encoding or "utf-8"
+    body = b"".join(chunks).decode(encoding, errors="replace")
+    response.close()
 
-    soup = BeautifulSoup(response.text, "html.parser")
+    soup = BeautifulSoup(body, "html.parser")
     for tag in soup(["script", "style", "noscript", "svg"]):
         tag.extract()
 

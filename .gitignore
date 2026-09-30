@@ -47,3 +47,5 @@ notebook
 data
 /app.py
 /main.py
+chroma_store/
+backups/

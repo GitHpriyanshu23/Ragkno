@@ -6,7 +6,7 @@ It includes:
 
 - FastAPI backend
 - React + Vite frontend
-- FAISS vector store with metadata persistence
+- Chroma vector store with tenant-scoped metadata persistence
 - Hybrid retrieval (dense + BM25)
 - Semantic chunking + parent-child chunking
 - Google Drive OAuth ingestion
@@ -40,10 +40,10 @@ It includes:
 
 - Backend: FastAPI, Uvicorn
 - Frontend: React, Vite, React Router
-- Retrieval: FAISS, sentence-transformers, rank-bm25
+- Retrieval: ChromaDB, sentence-transformers, rank-bm25
 - LLM: Google GenAI chat models
 - Evaluation: ragas, datasets
-- Storage: local FAISS index + SQLite chat memory
+- Storage: ChromaDB plus PostgreSQL or local SQLite
 
 ## Project Structure
 
@@ -52,7 +52,7 @@ backend/               FastAPI routes and API orchestration
 frontend/              React app (Vite)
 src/                   RAG core modules (ingest, retrieval, memory, vectorstore)
 evaluation/            RAGAS evaluation scripts and datasets
-faiss_store/           Persistent FAISS index and metadata
+chroma_store/          Persistent Chroma index and metadata
 data/                  Local data and runtime artifacts
 ```
 
@@ -69,11 +69,14 @@ Create a `.env` file in the repository root:
 ```env
 # AgentRouter (Primary LLM Provider)
 AGENTROUTER_API_KEY=your_agentrouter_api_key
+LLM_PROVIDER=agentrouter
 AGENTROUTER_BASE_URL=https://agentrouter.org/v1
-AGENTROUTER_MODEL=gpt-5.6-sol
+AGENTROUTER_MODEL=deepseek-v4-flash
+AGENTROUTER_FALLBACK_MODELS=gpt-5.5
+LLM_CONNECT_TIMEOUT_SECONDS=10
+LLM_REQUEST_TIMEOUT_SECONDS=45
 
-# Fallback models available on AgentRouter:
-# claude-opus-4-8, claude-opus-5, deepseek-v4-flash, gpt-6-astra
+# Additional AgentRouter models can be added as comma-separated fallbacks.
 
 # Alternative: Google GenAI (used if AGENTROUTER_API_KEY is not set)
 GOOGLE_API_KEY=your_google_api_key
@@ -94,7 +97,7 @@ From project root:
 ```bash
 python -m venv .venv
 source .venv/bin/activate
-pip install -r requirement.txt
+uv sync --dev
 ```
 
 Or if you use `uv`:
@@ -164,14 +167,13 @@ Run evaluation on a JSON test set:
 
 ```bash
 source .venv/bin/activate
-python evaluation/ragas_eval.py --dataset evaluation/testset.sample.json --top-k 3
+python evaluation/ragas_eval.py --dataset evaluation/testset.sample.json --user-id YOUR_USER_ID --top-k 3
 ```
 
 ## Notes for First Run
 
 - If you changed chunking/retrieval logic, re-index documents for best results.
-- If Drive OAuth is enabled, the app stores Drive tokens in `token.json`.
-- Local chat history is stored in `data/chat_memory.sqlite3`.
+- Drive OAuth tokens and chat history are stored per user in the configured database.
 
 ## Current Retrieval Design
 
@@ -180,7 +182,7 @@ python evaluation/ragas_eval.py --dataset evaluation/testset.sample.json --top-k
 	- Retrieve smaller child chunks
 	- Expand to larger parent context for generation
 - Hybrid dense+sparse retrieval:
-	- FAISS dense candidates
+- Chroma dense candidates
 	- BM25 sparse candidates
 	- Score fusion and reranking
 

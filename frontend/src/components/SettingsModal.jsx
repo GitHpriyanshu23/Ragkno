@@ -20,7 +20,7 @@ import {
   ArrowRight,
   MessageSquareHeart,
 } from 'lucide-react'
-import { syncDrive, API_BASE } from '@/api'
+import { syncDrive, API_BASE, getThreadMessages } from '@/api'
 import { useI18n } from '../lib/i18n.jsx'
 
 const NAV_TABS = [
@@ -43,6 +43,7 @@ export default function SettingsModal({
   onSampleQuestion,
   onLogout,
   onOpenFeedback,
+  conversationData = [],
 }) {
   const { language: currentLang, setLanguage: setI18nLanguage, t } = useI18n()
   const [activeTab, setActiveTab] = useState(initialTab)
@@ -52,7 +53,7 @@ export default function SettingsModal({
   const [streaming, setStreaming] = useState(() => localStorage.getItem('ragkno_streaming') !== 'false')
   const [useReranker, setUseReranker] = useState(() => localStorage.getItem('ragkno_reranker') !== 'false')
   const [topK, setTopK] = useState(() => Number(localStorage.getItem('ragkno_top_k') || 5))
-  const [model, setModel] = useState(() => localStorage.getItem('ragkno_model') || 'gemini-2.5-flash')
+  const [model, setModel] = useState(() => localStorage.getItem('ragkno_model') || '')
   const [language, setLanguage] = useState(() => currentLang || localStorage.getItem('ragkno_lang') || 'auto')
 
   // Operational states
@@ -112,12 +113,16 @@ export default function SettingsModal({
     const val = e.target.value
     setLanguage(val)
     setI18nLanguage(val)
+    localStorage.setItem('ragkno_lang', val)
   }
 
-  const handleExportConversations = () => {
+  const handleExportConversations = async () => {
     try {
-      const rawThreads = localStorage.getItem('rag_threads_store_v1')
-      const threads = rawThreads ? JSON.parse(rawThreads) : []
+      const baseThreads = Array.isArray(conversationData) ? conversationData : []
+      const threads = await Promise.all(baseThreads.map(async (thread) => {
+        const result = await getThreadMessages(thread.id)
+        return { ...thread, messages: result.messages || [] }
+      }))
       const exportPayload = {
         app: 'RagKno',
         version: '1.0.0',
@@ -160,7 +165,7 @@ export default function SettingsModal({
     setTestingHealth(true)
     const t0 = performance.now()
     try {
-      const res = await fetch(`${API_BASE}/health`)
+      const res = await fetch(`${API_BASE}/health/ready`, { credentials: 'include' })
       const t1 = performance.now()
       const data = await res.json().catch(() => ({}))
       const latency = Math.round(t1 - t0)
@@ -274,10 +279,10 @@ export default function SettingsModal({
                     <h4>Account & Privacy Protection</h4>
                     <p>
                       Logged in as <strong>{user?.name || 'Google User'}</strong> ({user?.email || 'OAuth session'}).
-                      Your personal Drive files, indices, and chat logs are cryptographically scoped to your identity.
+                      Your Drive files, indexed sources, and chat history are access-controlled by your authenticated user ID.
                     </p>
                     <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
-                      <span className="settings-badge-success">Isolated & Encrypted</span>
+                      <span className="settings-badge-success">User-scoped access</span>
                     </div>
                   </div>
                 </div>
@@ -375,9 +380,7 @@ export default function SettingsModal({
                       value={model}
                       onChange={handleModelChange}
                     >
-                      <option value="gemini-2.5-flash">Gemini 2.5 Flash (Ultra-fast)</option>
-                      <option value="gemini-1.5-pro">Gemini 1.5 Pro (Deep reasoning)</option>
-                      <option value="gemini-1.5-flash">Gemini 1.5 Flash</option>
+                      <option value="">Server-configured model</option>
                     </select>
                     <ChevronDown size={14} className="settings-select-chevron" />
                   </div>
@@ -442,17 +445,17 @@ export default function SettingsModal({
                 <div className="settings-row-item">
                   <div className="settings-row-info">
                     <span className="settings-row-title">Reset AI Preferences</span>
-                    <span className="settings-row-desc">Restore Gemini 2.5 Flash, top_k: 5, reranker: ON</span>
+                    <span className="settings-row-desc">Restore the server-configured model, top_k: 5, reranker: ON</span>
                   </div>
                   <button
                     type="button"
                     className="settings-btn-secondary"
                     onClick={() => {
-                      setModel('gemini-2.5-flash')
+                      setModel('')
                       setTopK(5)
                       setUseReranker(true)
                       setStreaming(true)
-                      localStorage.setItem('ragkno_model', 'gemini-2.5-flash')
+                      localStorage.removeItem('ragkno_model')
                       localStorage.setItem('ragkno_top_k', '5')
                       localStorage.setItem('ragkno_reranker', 'true')
                       localStorage.setItem('ragkno_streaming', 'true')
@@ -588,8 +591,8 @@ export default function SettingsModal({
                   <div className="settings-banner-text">
                     <h4>Getting Started with RagKno</h4>
                     <p>
-                      Synthesize insights from your documents, resumes, spreadsheets, and Google Drive files with
-                      instant verified citations.
+                      Ask questions over uploaded PDF, DOCX, and TXT files, supported Google Drive documents, and
+                      website pages, then inspect the retrieved source excerpts.
                     </p>
                   </div>
                 </div>
@@ -697,7 +700,7 @@ export default function SettingsModal({
                   <div className="settings-banner-text">
                     <h4>RagKno Core v1.0.0</h4>
                     <p>
-                      Created by <strong>Priyanshu Urmaliya</strong>. Built for high-precision document synthesis, strict multi-tenant privacy, and lightning-fast hybrid retrieval.
+                      Created by <strong>Priyanshu Urmaliya</strong>. Built for user-scoped document retrieval, hybrid search, and inspectable citations.
                     </p>
                   </div>
                 </div>

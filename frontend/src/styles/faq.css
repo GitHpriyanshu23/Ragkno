@@ -1,0 +1,237 @@
+/* ==========================================================================
+   FAQ Section Styles - Seamless Page Section Layout
+   ========================================================================== */
+
+.faq-root-section {
+  width: 100%;
+  background: #fbfbfb;
+  padding: 108px 24px;
+  border-top: 1px solid #ebe7df;
+  border-bottom: 1px solid #ebe7df;
+  box-sizing: border-box;
+}
+
+.faq-container {
+  max-width: 1140px;
+  margin: 0 auto;
+}
+
+/* Two-column layout */
+.faq-grid {
+  display: grid;
+  grid-template-columns: 360px 1fr;
+  gap: 72px;
+  align-items: start;
+}
+
+/* Left column */
+/* .faq-left-col {
+  position: sticky;
+  top: 96px;
+} */
+
+.faq-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 10px;
+  border: 1px solid #d4d4d8;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #52525b;
+  background-color: #fafafa;
+  margin-bottom: 24px;
+  user-select: none;
+}
+
+.faq-headline {
+  font-family: 'Archivo', Inter, -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: 42px;
+  font-weight: 800;
+  line-height: 1.14;
+  letter-spacing: -0.035em;
+  color: #18181b;
+  margin: 0 0 20px 0;
+}
+
+.faq-desc {
+  font-family: Inter, -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: 15px;
+  line-height: 1.62;
+  color: #71717a;
+  margin: 0;
+  max-width: 320px;
+}
+
+.faq-desc a,
+.faq-email-link {
+  color: #18181b;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  transition: opacity 0.15s ease;
+  display: inline-block;
+  margin-top: 8px;
+}
+
+.faq-desc a:hover,
+.faq-email-link:hover {
+  opacity: 0.75;
+}
+
+/* Right column */
+.faq-right-col {
+  width: 100%;
+}
+
+.faq-accordion-list {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  border-top: 1px solid #e4e4e7;
+}
+
+.faq-accordion-item {
+  border-bottom: 1px solid #e4e4e7;
+  overflow: hidden;
+}
+
+.faq-trigger-btn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 22px 0;
+  background: transparent;
+  border: none;
+  outline: none;
+  cursor: pointer;
+  text-align: left;
+  user-select: none;
+  transition: color 0.15s ease;
+}
+
+.faq-trigger-btn:focus-visible {
+  outline: 2px solid #18181b;
+  outline-offset: 4px;
+  border-radius: 4px;
+}
+
+.faq-question-text {
+  font-family: Inter, -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: 16px;
+  font-weight: 600;
+  color: #18181b;
+  line-height: 1.4;
+  padding-right: 20px;
+  margin: 0;
+  transition: color 0.15s ease;
+}
+
+.faq-trigger-btn:hover .faq-question-text {
+  color: #000000;
+}
+
+/* Square toggle icon button */
+.faq-icon-box {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  min-width: 32px;
+  border-radius: 8px;
+  border: 1px solid #e4e4e7;
+  background: #ffffff;
+  color: #52525b;
+  font-size: 18px;
+  font-weight: 300;
+  line-height: 1;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.faq-trigger-btn:hover .faq-icon-box {
+  border-color: #d4d4d8;
+  color: #18181b;
+  background: #fafafa;
+}
+
+.faq-icon-box.is-open {
+  border-color: #d4d4d8;
+  background: #f4f4f5;
+  color: #18181b;
+}
+
+.faq-icon-symbol {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transform-origin: center center;
+}
+
+/* Accordion expanded content */
+.faq-content-box {
+  overflow: hidden;
+}
+
+.faq-answer-inner {
+  font-family: Inter, -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: 14.5px;
+  line-height: 1.68;
+  color: #52525b;
+  padding: 0 40px 24px 0;
+  margin: 0;
+}
+
+/* ==========================================================================
+   Responsive Breakpoints
+   ========================================================================== */
+
+@media (max-width: 1024px) {
+  .faq-root-section {
+    padding: 72px 24px;
+  }
+
+  .faq-grid {
+    grid-template-columns: 1fr;
+    gap: 48px;
+  }
+
+  .faq-left-col {
+    position: static;
+  }
+
+  .faq-headline {
+    font-size: 36px;
+  }
+
+  .faq-desc {
+    max-width: 100%;
+  }
+}
+
+@media (max-width: 640px) {
+  .faq-root-section {
+    padding: 56px 18px;
+  }
+
+  .faq-headline {
+    font-size: 30px;
+  }
+
+  .faq-question-text {
+    font-size: 15px;
+  }
+
+  .faq-trigger-btn {
+    padding: 18px 0;
+  }
+
+  .faq-answer-inner {
+    padding-right: 8px;
+    font-size: 14px;
+  }
+}

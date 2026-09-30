@@ -1,0 +1,18 @@
+:root{--heading-font:"Times New Roman",Times,serif}
+/* The editorial serif belongs only to the primary headings on the homepage.
+   Product UI, legal pages, cards, modals, and chat keep the interface font. */
+.hero-section h1,
+.bento-section .section-head-dark>h2,
+.how-it-works-section .hw-head>h2,
+.chat-demo-section .section-head-light>h2,
+.use-cases-section .editorial-workflow-head>h2,
+.faq-root-section .faq-headline,
+.cta-section>h2{font-family:var(--heading-font)!important}
+
+/* Secondary titles inside the sections remain part of the interface system. */
+.bento-section .bx-copy h3,
+.how-it-works-section .hw-copy h3,
+.use-cases-section .workflow-panel h3,
+.use-cases-section .workflow-tab-title{font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif!important}
+/* Keep product labels, controls, evidence excerpts, and code in the existing sans-serif UI font. */
+.chat-demo-section{padding:clamp(68px,8vw,104px) 24px!important}.chat-demo-section .section-head-light{margin-bottom:32px!important}.chat-demo-section .section-head-light h2{font-size:clamp(2.25rem,4.4vw,3.85rem)!important}.premium-chat-demo{min-height:560px!important}.premium-chat-body{padding:28px!important}.use-cases-section{padding:clamp(70px,8vw,112px) 24px!important}.editorial-workflow-head{margin-bottom:38px!important}.editorial-workflow-head h2{font-size:clamp(2.35rem,4.5vw,4rem)!important}.workflow-panel{min-height:350px!important}.workflow-detail{padding:clamp(26px,3vw,42px)!important}@media(max-width:700px){.chat-demo-section{padding:56px 16px!important}.premium-chat-demo{min-height:460px!important}.premium-chat-body{padding:18px!important}.use-cases-section{padding:58px 16px!important}.workflow-panel{min-height:0!important}.editorial-workflow-head{margin-bottom:26px!important}}

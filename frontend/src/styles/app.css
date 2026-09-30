@@ -2,6 +2,12 @@
   box-sizing: border-box;
 }
 
+html {
+  scroll-behavior: smooth;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
 html,
 body,
 #root {
@@ -31,7 +37,7 @@ body {
   font-family: 'Inter', sans-serif;
   color: var(--text);
   background: var(--page-bg);
-  background-attachment: fixed;
+  min-height: 100vh;
 }
 
 a {
@@ -56,7 +62,8 @@ a {
 }
 
 .page-main {
-  padding-top: 64px;
+  padding-top: 0;
+  background: #ffffff;
 }
 
 .auth-loading {
@@ -75,14 +82,16 @@ a {
   left: 0;
   right: 0;
   z-index: 30;
-  padding: 12px 16px 0;
+  padding: 12px clamp(16px, 2vw, 28px) 0;
   background: transparent;
   pointer-events: none;
   transition: padding 0.48s cubic-bezier(0.22, 1, 0.36, 1);
+  transform: translateZ(0);
 }
 
 .top-nav-track {
-  max-width: 1400px;
+  width: 100%;
+  max-width: none;
   margin: 0 auto;
   display: flex;
   justify-content: center;
@@ -90,6 +99,8 @@ a {
 }
 
 .top-nav-shell {
+  position: relative;
+  isolation: isolate;
   width: 100%;
   max-width: 1400px;
   border: 1px solid transparent;
@@ -102,7 +113,20 @@ a {
     border-radius 0.48s cubic-bezier(0.22, 1, 0.36, 1),
     background 0.42s ease,
     box-shadow 0.42s ease,
-    backdrop-filter 0.42s ease;
+    backdrop-filter 0.42s ease,
+    transform 0.58s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.top-nav-shell::before {
+  position: absolute;
+  z-index: -1;
+  inset: 1px;
+  border-radius: inherit;
+  background: linear-gradient(135deg, rgba(255,255,255,.34), rgba(255,255,255,.04) 55%, rgba(255,255,255,.2));
+  content: '';
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .42s ease;
 }
 
 .top-nav.scrolled {
@@ -110,12 +134,18 @@ a {
 }
 
 .top-nav.scrolled .top-nav-shell {
-  max-width: 920px;
-  border-color: rgba(17, 17, 17, 0.08);
+  max-width: min(1180px, 90vw);
+  border-color: rgba(255, 255, 255, 0.68);
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.84);
-  backdrop-filter: blur(20px) saturate(120%);
-  box-shadow: 0 18px 50px rgba(25, 24, 21, 0.12);
+  background: linear-gradient(135deg, rgba(255,255,255,.78), rgba(249,249,247,.64));
+  -webkit-backdrop-filter: blur(26px) saturate(175%);
+  backdrop-filter: blur(26px) saturate(175%);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.86), inset 0 -1px 0 rgba(17,17,17,.035), 0 18px 54px rgba(25,24,21,.12), 0 4px 14px rgba(25,24,21,.06);
+}
+
+.top-nav.scrolled .top-nav-shell::before,
+.top-nav.inner-nav .top-nav-shell::before {
+  opacity: 1;
 }
 
 .top-nav.inner-nav {
@@ -123,20 +153,23 @@ a {
 }
 
 .top-nav.inner-nav .top-nav-shell {
-  max-width: 920px;
-  border-color: rgba(17, 17, 17, 0.08);
+  max-width: min(1180px, 90vw);
+  border-color: rgba(255, 255, 255, 0.68);
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.84);
-  backdrop-filter: blur(20px) saturate(120%);
-  box-shadow: 0 18px 50px rgba(25, 24, 21, 0.12);
+  background: linear-gradient(135deg, rgba(255,255,255,.78), rgba(249,249,247,.64));
+  -webkit-backdrop-filter: blur(26px) saturate(175%);
+  backdrop-filter: blur(26px) saturate(175%);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.86), inset 0 -1px 0 rgba(17,17,17,.035), 0 18px 54px rgba(25,24,21,.12), 0 4px 14px rgba(25,24,21,.06);
 }
 
 .top-nav.inner-nav .top-nav-inner {
-  height: 54px;
-  padding: 0 10px 0 18px;
+  height: 62px;
+  padding: 0 12px 0 22px;
 }
 
 .top-nav-inner {
+  position: relative;
+  z-index: 1;
   padding: 0 24px;
   height: 48px;
   display: flex;
@@ -146,8 +179,8 @@ a {
 }
 
 .top-nav.scrolled .top-nav-inner {
-  height: 54px;
-  padding: 0 10px 0 18px;
+  height: 62px;
+  padding: 0 12px 0 22px;
 }
 
 .brand {
@@ -189,9 +222,12 @@ a {
 }
 
 .top-links {
+  position: absolute;
+  left: 50%;
   display: flex;
   align-items: center;
-  gap: 32px;
+  gap: clamp(26px, 3vw, 48px);
+  transform: translateX(-50%);
 }
 
 .top-link {
@@ -226,10 +262,80 @@ a {
   border-bottom-color: transparent;
 }
 
+.top-nav.scrolled.nav-on-dark .top-nav-shell {
+  border-color: rgba(255, 255, 255, 0.2);
+  background: linear-gradient(135deg, rgba(28, 28, 27, 0.7), rgba(11, 11, 11, 0.54));
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.2), inset 0 -1px 0 rgba(0,0,0,.14), 0 18px 54px rgba(0,0,0,.24), 0 4px 14px rgba(0,0,0,.14);
+}
+
+.top-nav.scrolled.nav-on-dark .top-nav-shell::before {
+  background: linear-gradient(135deg, rgba(255,255,255,.16), rgba(255,255,255,.015) 56%, rgba(255,255,255,.08));
+}
+
+.top-nav.scrolled.nav-on-dark .brand,
+.top-nav.scrolled.nav-on-dark .top-link,
+.top-nav.scrolled.nav-on-dark .mobile-menu-btn {
+  color: #ffffff;
+}
+
+.top-nav.scrolled.nav-on-dark .brand-logo {
+  border-color: rgba(255, 255, 255, 0.86);
+  filter: brightness(0) invert(1);
+}
+
+.top-nav.scrolled.nav-on-dark .top-link:hover,
+.top-nav.scrolled.nav-on-dark .top-link.active {
+  color: #ffffff;
+  border-bottom-color: rgba(255, 255, 255, 0.78);
+}
+
+.top-nav.scrolled.nav-on-dark .navbar-button.secondary,
+.top-nav.scrolled.nav-on-dark .navbar-github-link {
+  border-color: rgba(255, 255, 255, 0.34);
+  background: rgba(255, 255, 255, 0.1);
+  color: #ffffff;
+}
+
+.top-nav.scrolled.nav-on-dark .navbar-github-link:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.top-nav.scrolled.nav-on-dark .navbar-button.primary {
+  border-color: #ffffff;
+  background: #ffffff;
+  color: #111111;
+}
+
 .top-actions {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.navbar-github-link {
+  min-height: 36px;
+  border: 1px solid rgba(0, 0, 0, 0.14);
+  border-radius: 999px;
+  padding: 8px 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  background: rgba(0, 0, 0, 0.04);
+  color: #111111;
+  font-size: 0.84rem;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  text-decoration: none;
+  transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease, transform 0.2s ease;
+  flex-shrink: 0;
+}
+
+.navbar-github-link:hover {
+  background: rgba(0, 0, 0, 0.08);
+  color: #000000;
+  transform: translateY(-1px);
 }
 
 .navbar-button {
@@ -272,13 +378,15 @@ a {
   background: #2b2b2b;
 }
 
-.top-nav.home-nav:not(.scrolled) .navbar-button.secondary {
+.top-nav.home-nav:not(.scrolled) .navbar-button.secondary,
+.top-nav.home-nav:not(.scrolled) .navbar-github-link {
   border-color: rgba(255, 255, 255, 0.38);
   background: rgba(255, 255, 255, 0.18);
   color: #ffffff;
 }
 
-.top-nav.home-nav:not(.scrolled) .navbar-button.secondary:hover {
+.top-nav.home-nav:not(.scrolled) .navbar-button.secondary:hover,
+.top-nav.home-nav:not(.scrolled) .navbar-github-link:hover {
   background: rgba(255, 255, 255, 0.28);
 }
 
@@ -313,6 +421,24 @@ a {
 
 .mobile-menu {
   display: none;
+}
+
+.mobile-menu-links {
+  display: grid;
+  gap: 2px;
+}
+
+.mobile-menu-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 10px;
+}
+
+#capabilities,
+#how-it-works,
+#faq {
+  scroll-margin-top: 96px;
 }
 
 .mobile-menu-link {
@@ -403,7 +529,8 @@ a {
 }
 
 .btn-primary-solid:hover {
-  opacity: 0.9;
+  background: #2b2b2b;
+  transform: translateY(-1px);
 }
 
 .btn-outline {
@@ -432,7 +559,7 @@ a {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: 8px;
   flex-wrap: wrap;
   font-size: 0.62rem;
   text-transform: uppercase;
@@ -558,7 +685,8 @@ a {
   }
 
   .top-nav-shell,
-  .top-nav.scrolled .top-nav-shell {
+  .top-nav.scrolled .top-nav-shell,
+  .top-nav.inner-nav .top-nav-shell {
     max-width: 100%;
     border-radius: 0;
     border-color: var(--border);
@@ -567,11 +695,14 @@ a {
     backdrop-filter: blur(14px);
   }
 
+  .top-nav-shell::before { display: none; }
+
   .top-links {
     display: none;
   }
 
-  .top-actions > .navbar-button {
+  .top-actions > .navbar-button,
+  .top-actions > .navbar-github-link {
     display: none;
   }
 
@@ -585,6 +716,20 @@ a {
     padding: 10px 24px 14px;
     border-top: 1px solid var(--border);
     background: color-mix(in srgb, var(--surface) 92%, transparent);
+  }
+
+  .mobile-menu-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding-top: 10px;
+  }
+
+  .mobile-menu-actions .navbar-button,
+  .mobile-menu-actions .navbar-github-link {
+    display: inline-flex;
+    flex: 1;
+    width: 100%;
   }
 
   .top-nav.home-nav:not(.scrolled) .brand,

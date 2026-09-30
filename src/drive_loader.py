@@ -9,6 +9,7 @@ import io
 import os
 import json
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import List
 
@@ -76,17 +77,19 @@ def pop_oauth_verifier_with_user(state: str) -> tuple[str | None, str | None]:
     user_id = None
     if state in _OAUTH_CODE_VERIFIERS:
         entry = _OAUTH_CODE_VERIFIERS.pop(state)
-        verifier = entry[0]
-        user_id = entry[2] if len(entry) > 2 else None
+        if now - entry[1] <= _OAUTH_VERIFIER_TTL_SECONDS:
+            verifier = entry[0]
+            user_id = entry[2] if len(entry) > 2 else None
 
     try:
         if _VERIFIERS_FILE.exists():
             data = json.loads(_VERIFIERS_FILE.read_text())
             if state in data:
                 entry = data.pop(state)
-                verifier = verifier or entry[0]
-                if not user_id and len(entry) > 2:
-                    user_id = entry[2]
+                if now - entry[1] <= _OAUTH_VERIFIER_TTL_SECONDS:
+                    verifier = verifier or entry[0]
+                    if not user_id and len(entry) > 2:
+                        user_id = entry[2]
             # Clean up old entries
             data = {k: v for k, v in data.items() if now - v[1] <= _OAUTH_VERIFIER_TTL_SECONDS}
             _VERIFIERS_FILE.write_text(json.dumps(data))
@@ -147,13 +150,18 @@ def exchange_code(code: str, state: str | None = None, user_id: str | None = Non
     """Exchange an auth code for credentials and persist in Supabase for user_id."""
     flow = _build_flow()
 
+    if not state:
+        raise ValueError("OAuth state is required")
     resolved_user_id = user_id
-    if state:
-        code_verifier, stored_uid = pop_oauth_verifier_with_user(state)
-        if code_verifier:
-            flow.code_verifier = code_verifier
-        if not resolved_user_id and stored_uid:
-            resolved_user_id = stored_uid
+    code_verifier, stored_uid = pop_oauth_verifier_with_user(state)
+    if not code_verifier:
+        raise ValueError("OAuth state is invalid or expired")
+    if resolved_user_id and stored_uid and resolved_user_id != stored_uid:
+        raise ValueError("OAuth state does not belong to the active user")
+    flow.code_verifier = code_verifier
+    resolved_user_id = resolved_user_id or stored_uid
+    if not resolved_user_id:
+        raise ValueError("OAuth state is not associated with a user")
 
     flow.fetch_token(code=code)
     creds = flow.credentials
@@ -202,6 +210,8 @@ def load_credentials(user_id: str | None = None) -> Credentials | None:
         client_secret=raw["client_secret"],
         scopes=raw.get("scopes", SCOPES),
     )
+    if raw.get("expiry_ts"):
+        creds.expiry = datetime.fromtimestamp(float(raw["expiry_ts"]), tz=timezone.utc).replace(tzinfo=None)
 
     if creds.expired and creds.refresh_token:
         try:
@@ -252,7 +262,7 @@ def _list_drive_files_with_service(service) -> List[dict]:
             service.files()
             .list(
                 q=query,
-                fields="nextPageToken, files(id, name, mimeType)",
+                fields="nextPageToken, files(id, name, mimeType, modifiedTime, version)",
                 pageToken=page_token,
                 pageSize=100,
             )
@@ -330,7 +340,10 @@ def load_documents_from_drive(creds: Credentials, file_ids: List[str] | None = N
                                 page_content=text,
                                 metadata={
                                     "source": f"drive://{name}",
+                                    "source_type": "drive",
                                     "file_id": file_id,
+                                    "modified_time": f.get("modifiedTime", ""),
+                                    "version": f.get("version", ""),
                                     "page": page_num,
                                 },
                             )
@@ -344,7 +357,10 @@ def load_documents_from_drive(creds: Credentials, file_ids: List[str] | None = N
                             page_content=text,
                             metadata={
                                 "source": f"drive://{name}",
+                                "source_type": "drive",
                                 "file_id": file_id,
+                                "modified_time": f.get("modifiedTime", ""),
+                                "version": f.get("version", ""),
                             },
                         )
                     )
