@@ -49,7 +49,8 @@ SUPPORTED_MIME_TYPES = {
 }
 
 # Persistent cache for OAuth PKCE verifier keyed by OAuth state.
-_VERIFIERS_FILE = _PROJECT_ROOT / "data" / "oauth_verifiers.json"
+_DATA_ROOT = Path(os.getenv("RAGKNO_DATA_DIR", str(_PROJECT_ROOT))).expanduser()
+_VERIFIERS_FILE = _DATA_ROOT / "oauth_verifiers.json"
 _OAUTH_CODE_VERIFIERS: dict[str, tuple[str, float, str | None]] = {}
 _OAUTH_VERIFIER_TTL_SECONDS = 1800
 

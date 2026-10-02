@@ -32,6 +32,13 @@ describe('API client security and streaming', () => {
     expect(fetch).toHaveBeenCalledTimes(1)
   })
 
+  it('explains an empty proxy 500 as an unavailable backend', async () => {
+    fetch.mockResolvedValue(new Response('', { status: 500 }))
+
+    await expect(loginWithPassword({ email: 'ada@example.com', password: 'StrongPassword1!' }))
+      .rejects.toThrow('RagKno server is unavailable. Start the backend and try again.')
+  })
+
   it('rejects a stream that ends without a done event', async () => {
     const stream = new ReadableStream({
       start(controller) {

@@ -29,3 +29,6 @@ faiss_store
 *.sqlite3
 evaluation/
 note.txt
+docs/screenshots
+frontend
+.github

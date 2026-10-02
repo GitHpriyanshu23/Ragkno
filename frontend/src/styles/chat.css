@@ -2081,6 +2081,28 @@
   margin: 8px 0;
 }
 
+.profile-product-version {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 8px;
+  padding: 12px 10px 4px;
+  border-top: 1px solid #3a3a3a;
+  color: #a3a3a3;
+  font-size: .82rem;
+}
+
+.profile-product-version strong {
+  padding: 3px 9px;
+  border: 1px solid #404040;
+  border-radius: 999px;
+  background: #2d2d2d;
+  color: #d4d4d4;
+  font-size: .75rem;
+  font-weight: 650;
+}
+
 .chat-canvas {
   height: 100vh;
   min-height: 0;

@@ -126,6 +126,10 @@ function DocsSidebar({ query, onQueryChange, mobileOpen, onClose, searchRef }) {
         ))}
         {filteredGroups.length === 0 && <p className="docs-search-empty">No matching section.</p>}
       </nav>
+      <div className="docs-product-version" aria-label="RagKno version 1.0">
+        <span>RagKno</span>
+        <strong>v1.0</strong>
+      </div>
     </aside>
   )
 }

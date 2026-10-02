@@ -61,7 +61,7 @@ export default function AboutModal({ isOpen, onClose }) {
           </section>
 
           <div style={{ padding: '0.75rem 1rem', background: '#212121', border: '1px solid rgba(255, 255, 255, 0.08)', borderRadius: '12px', fontSize: '0.82rem', color: '#a3a3a3', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span>RagKno Core v1.0.0</span>
+            <span>RagKno v1.0</span>
             <span style={{ fontWeight: 600, color: '#ececec' }}>Created by Priyanshu Urmaliya</span>
           </div>
         </div>

@@ -150,7 +150,7 @@ function AppShell({ children, toasts, onDismissToast }) {
   return (
     <div className="app-shell">
       {!isAppRoute && !isLoginRoute && (
-        <header className={`top-nav ${isHomeRoute ? 'home-nav' : 'inner-nav'} ${isScrolled ? 'scrolled' : ''} nav-on-${navTone}`}>
+        <header className={`top-nav ${isHomeRoute ? 'home-nav' : 'inner-nav'} ${isScrolled ? 'scrolled' : ''} ${mobileOpen ? 'mobile-open' : ''} nav-on-${navTone}`}>
           <div className="top-nav-track">
             <div className="top-nav-shell">
               <div className="top-nav-inner">
@@ -190,7 +190,7 @@ function AppShell({ children, toasts, onDismissToast }) {
                 </div>
               </div>
               {mobileOpen && (
-                <nav className="mobile-menu" aria-label="Mobile navigation">
+                <nav className="mobile-menu is-open" aria-label="Mobile navigation">
                   <div className="mobile-menu-links">
                     <Link to="/#capabilities" className="mobile-menu-link" onClick={() => setMobileOpen(false)}>Features</Link>
                     <Link to="/#how-it-works" className="mobile-menu-link" onClick={() => setMobileOpen(false)}>How it works</Link>
@@ -267,7 +267,7 @@ function HomePage() {
   return (
     <div className="home-page" ref={homeRef}>
       <section className="hero-section" data-nav-theme="dark">
-        <img className="hero-image" src={heroImage} alt="Open field landscape representing an accessible knowledge workspace" fetchPriority="high" />
+        <img className="hero-image" src={heroImage} alt="Open field landscape representing an accessible knowledge workspace" fetchpriority="high" />
         <div className="hero-overlay" aria-hidden="true" />
         <div className="hero-grid">
           <div className="hero-copy-block">
@@ -2002,6 +2002,10 @@ export function ChatPage({ user, onUserChange, onToast }) {
                 <button type="button" onClick={() => { setProfileMenuOpen(false); setSettingsModalOpen(false); setFeedbackModalOpen(true); }}><MessageSquareHeart size={15} /> {t('giveFeedback')}</button>
                 <hr />
                 <button type="button" onClick={handleLogout}><LogOut size={15} /> {t('logOut')}</button>
+                <div className="profile-product-version" aria-label="RagKno version 1.0">
+                  <span>RagKno</span>
+                  <strong>v1.0</strong>
+                </div>
               </div>
             )}
             <button
@@ -2101,6 +2105,10 @@ export function ChatPage({ user, onUserChange, onToast }) {
                 <button type="button" onClick={() => { setProfileMenuOpen(false); setSettingsModalOpen(false); setFeedbackModalOpen(true); }}><MessageSquareHeart size={15} /> {t('giveFeedback')}</button>
                 <hr />
                 <button type="button" onClick={handleLogout}><LogOut size={15} /> {t('logOut')}</button>
+                <div className="profile-product-version" aria-label="RagKno version 1.0">
+                  <span>RagKno</span>
+                  <strong>v1.0</strong>
+                </div>
               </div>
             )}
             <button className="user-pill" type="button" onClick={() => setProfileMenuOpen((open) => !open)} aria-expanded={profileMenuOpen}>

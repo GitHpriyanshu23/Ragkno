@@ -40,6 +40,10 @@ dist/
 frontend/node_modules/
 frontend/dist/
 frontend/.vite/
+frontend/.dev.vars*
+!frontend/.dev.vars.example
+frontend/.wrangler/
+coverage/
 
 # Runtime data artifacts
 data/

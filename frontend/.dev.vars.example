@@ -1,0 +1,2 @@
+# Used by `npx wrangler pages dev dist` for the local Pages Function proxy.
+BACKEND_ORIGIN=http://127.0.0.1:8000

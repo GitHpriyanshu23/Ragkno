@@ -97,7 +97,15 @@ from src.ingest import MAX_UPLOAD_BYTES, load_uploaded_file, load_url_content
 # App setup
 # ---------------------------------------------------------------------------
 
-STORE_DIR = str(Path(__file__).parent.parent / "chroma_store")
+_DATA_ROOT = Path(os.getenv("RAGKNO_DATA_DIR", str(_PROJECT_ROOT))).expanduser()
+STORE_DIR = str(
+    Path(
+        os.getenv(
+            "CHROMA_PERSIST_DIR",
+            str(_DATA_ROOT / "chroma_store"),
+        )
+    ).expanduser()
+)
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173").rstrip("/")
 SESSION_COOKIE_NAME = "ragkno_session"
 SESSION_TTL_SECONDS = 60 * 60 * 24 * 7
@@ -109,6 +117,14 @@ if os.getenv("ENV", "").lower() in {"production", "prod"}:
         raise RuntimeError("RAGKNO_SESSION_SECRET must be set to at least 32 characters in production")
     if not FRONTEND_URL.startswith("https://"):
         raise RuntimeError("FRONTEND_URL must use HTTPS in production")
+    if not os.getenv("DATABASE_URL"):
+        raise RuntimeError("DATABASE_URL must be configured in production")
+    if not (
+        os.getenv("AGENTROUTER_API_KEY")
+        or os.getenv("AGENT_ROUTER_API_KEY")
+        or os.getenv("GOOGLE_API_KEY")
+    ):
+        raise RuntimeError("Configure AGENTROUTER_API_KEY or GOOGLE_API_KEY in production")
 
 app = FastAPI(title="RAG API", version="1.0.0")
 

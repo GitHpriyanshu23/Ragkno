@@ -259,6 +259,11 @@ export default function SettingsModal({
               )
             })}
           </nav>
+
+          <div className="settings-product-version" aria-label="RagKno version 1.0">
+            <span>RagKno</span>
+            <strong>v1.0</strong>
+          </div>
         </aside>
 
         {/* Right Content Area */}
@@ -698,7 +703,7 @@ export default function SettingsModal({
                     <Layers size={20} />
                   </div>
                   <div className="settings-banner-text">
-                    <h4>RagKno Core v1.0.0</h4>
+                    <h4>RagKno v1.0</h4>
                     <p>
                       Created by <strong>Priyanshu Urmaliya</strong>. Built for user-scoped document retrieval, hybrid search, and inspectable citations.
                     </p>

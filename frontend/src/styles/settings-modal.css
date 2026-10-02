@@ -178,6 +178,28 @@
   flex-shrink: 0;
 }
 
+.settings-product-version {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: auto;
+  padding: .85rem .55rem .1rem;
+  border-top: 1px solid rgba(255, 255, 255, .08);
+  color: #a3a3a3;
+  font-size: 13px;
+}
+
+.settings-product-version strong {
+  padding: 3px 8px;
+  border: 1px solid rgba(255, 255, 255, .08);
+  border-radius: 999px;
+  background: #262626;
+  color: #d4d4d4;
+  font-size: 12px;
+  font-weight: 650;
+}
+
 /* Right Content Area */
 .settings-modal-content,
 .chatgpt-settings-content {

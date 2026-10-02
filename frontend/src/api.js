@@ -12,6 +12,9 @@ async function parseError(response, fallback) {
   const detail = payload?.detail
   if (typeof detail === 'string') return detail
   if (detail && typeof detail === 'object') return detail.message || JSON.stringify(detail)
+  if (response.status === 500) {
+    return 'RagKno server is unavailable. Start the backend and try again.'
+  }
   return fallback
 }
 

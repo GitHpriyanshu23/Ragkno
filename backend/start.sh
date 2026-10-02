@@ -2,7 +2,7 @@
 set -eu
 
 : "${PORT:=8000}"
-: "${WEB_CONCURRENCY:=2}"
+: "${WEB_CONCURRENCY:=1}"
 
 exec uv run uvicorn backend.main:app \
   --host 0.0.0.0 \

@@ -1,0 +1,41 @@
+name: Bug report
+description: Report reproducible behavior that is not working as expected.
+title: "bug: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Do not include API keys, OAuth tokens, private documents, or personal data.
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: Describe the expected and actual behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open …
+        2. Select …
+        3. Observe …
+    validations:
+      required: true
+  - type: input
+    id: revision
+    attributes:
+      label: RagKno version or commit
+      placeholder: v1.0.0 or commit SHA
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Browser, operating system, Python and Node versions, and deployment type.
+  - type: textarea
+    id: logs
+    attributes:
+      label: Sanitized logs
+      description: Remove secrets and private content before pasting logs.
+      render: shell

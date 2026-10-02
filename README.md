@@ -1,191 +1,209 @@
-# RAG2: Full-Stack Retrieval-Augmented Generation Platform
+<div align="center">
 
-RAG2 is a production-style RAG application that supports document ingestion, hybrid retrieval, conversational memory, streaming responses, and source-grounded answers with citations.
+# RagKno
 
-It includes:
+**Ask naturally. Verify every answer.**
 
-- FastAPI backend
-- React + Vite frontend
-- Chroma vector store with tenant-scoped metadata persistence
-- Hybrid retrieval (dense + BM25)
-- Semantic chunking + parent-child chunking
-- Google Drive OAuth ingestion
-- Server-sent events (token streaming)
-- RAGAS evaluation pipeline
+An open-source retrieval-augmented generation workspace for turning documents, websites, and Google Drive files into cited, streaming answers.
 
-## Features
+[![RagKno v1.0](https://img.shields.io/badge/RagKno-v1.0-111111)](https://github.com/GitHpriyanshu23/Ragkno)
+[![CI](https://github.com/GitHpriyanshu23/Ragkno/actions/workflows/ci.yml/badge.svg)](https://github.com/GitHpriyanshu23/Ragkno/actions/workflows/ci.yml)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE.md)
+[![Python 3.13](https://img.shields.io/badge/Python-3.13-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![React 18](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=111)](https://react.dev/)
 
-- Multi-source ingestion
-	- Upload local files (`.pdf`, `.txt`, `.docx`)
-	- Ingest website URLs
-	- Sync selected Google Drive files
-- Retrieval and generation
-	- Dense retrieval with FAISS embeddings
-	- Sparse retrieval with BM25
-	- Hybrid fusion using reciprocal-rank style merging
-	- Semantic reranking (CrossEncoder)
-	- Parent-child context expansion before LLM generation
-- Chat UX
-	- Multi-thread chat history
-	- Streaming token responses (SSE)
-	- Inline citations and source cards
-	- Expandable source chunks and relevance display
-- Memory
-	- Session-aware memory in SQLite
-	- Lightweight summary refresh for longer chats
-- Evaluation
-	- RAGAS metrics: faithfulness, context precision, answer relevancy
+[Documentation](#documentation) · [Quickstart](#quickstart) · [Deployment](docs/DEPLOYMENT.md) · [Contributing](CONTRIBUTING.md)
 
-## Tech Stack
+</div>
 
-- Backend: FastAPI, Uvicorn
-- Frontend: React, Vite, React Router
-- Retrieval: ChromaDB, sentence-transformers, rank-bm25
-- LLM: Google GenAI chat models
-- Evaluation: ragas, datasets
-- Storage: ChromaDB plus PostgreSQL or local SQLite
+![RagKno landing page](docs/screenshots/landing-desktop.webp)
 
-## Project Structure
+## What RagKno does
 
-```text
-backend/               FastAPI routes and API orchestration
-frontend/              React app (Vite)
-src/                   RAG core modules (ingest, retrieval, memory, vectorstore)
-evaluation/            RAGAS evaluation scripts and datasets
-chroma_store/          Persistent Chroma index and metadata
-data/                  Local data and runtime artifacts
+RagKno gives each user a private knowledge workspace. Add supported files, a public web page, or selected Google Drive documents; RagKno extracts and chunks the content, indexes it with user-scoped metadata, retrieves and reranks relevant evidence, and streams an answer with citations back to the conversation.
+
+- **Multiple knowledge sources** — PDF, DOCX, TXT, public URLs, and Google Drive
+- **Grounded conversations** — dense and keyword retrieval, semantic reranking, parent-context expansion, and inline citations
+- **Streaming interface** — token streaming over server-sent events with visible retrieval progress
+- **Private workspaces** — authenticated users, scoped threads, messages, sources, vectors, and Drive credentials
+- **Conversation management** — persistent chat history, rename/delete controls, Markdown, and responsive UI
+- **Evaluation** — a RAGAS-based evaluation command and sample dataset
+- **Self-hosting** — Docker backend, Cloudflare Pages proxy, health endpoints, and environment templates
+
+## Product preview
+
+![RagKno documentation](docs/screenshots/docs.webp)
+
+## How it works
+
+```mermaid
+flowchart LR
+    A[Files, URLs, Drive] --> B[Extract and chunk]
+    B --> C[Chroma vector index]
+    Q[User question] --> D[Dense + BM25 retrieval]
+    C --> D
+    D --> E[Cross-encoder reranking]
+    E --> F[AgentRouter or Google model]
+    F --> G[Streaming answer + citations]
+    P[(PostgreSQL)] --- Q
+    P --- G
 ```
 
-## Prerequisites
+The React client talks to FastAPI through `/api`. In production, a Cloudflare Pages Function forwards that path to the backend, keeping sessions first-party while streaming the response. PostgreSQL stores accounts, threads, messages, source metadata, and encrypted Drive credentials. Chroma stores the vector index on a persistent volume.
 
-- Python 3.13+
-- Node.js 18+
-- npm
+## Stack
 
-## Environment Variables
+- **Frontend:** React 18, Vite, React Router, Motion, GSAP
+- **API:** FastAPI, Uvicorn, Pydantic
+- **Retrieval:** ChromaDB, sentence-transformers, BM25, CrossEncoder reranking
+- **Generation:** AgentRouter by default; Google Generative AI is supported as an alternative
+- **Persistence:** PostgreSQL in production, SQLite for local development, and Chroma on disk
+- **Hosting target:** Cloudflare Pages + Pages Functions for the frontend; Docker on Hugging Face Spaces for the API
 
-Create a `.env` file in the repository root:
+## Quickstart
+
+### Requirements
+
+- Python 3.13
+- [uv](https://docs.astral.sh/uv/)
+- Node.js 22 and npm
+- An AgentRouter key or Google AI key
+
+### 1. Clone and configure
+
+```bash
+git clone https://github.com/GitHpriyanshu23/Ragkno.git
+cd Ragkno
+cp .env.example .env
+```
+
+For a minimal local run, set one model provider in `.env`:
 
 ```env
-# AgentRouter (Primary LLM Provider)
-AGENTROUTER_API_KEY=your_agentrouter_api_key
 LLM_PROVIDER=agentrouter
-AGENTROUTER_BASE_URL=https://agentrouter.org/v1
+AGENTROUTER_API_KEY=your_key
 AGENTROUTER_MODEL=deepseek-v4-flash
-AGENTROUTER_FALLBACK_MODELS=gpt-5.5
-LLM_CONNECT_TIMEOUT_SECONDS=10
-LLM_REQUEST_TIMEOUT_SECONDS=45
-
-# Additional AgentRouter models can be added as comma-separated fallbacks.
-
-# Alternative: Google GenAI (used if AGENTROUTER_API_KEY is not set)
-GOOGLE_API_KEY=your_google_api_key
-GOOGLE_LLM_MODEL=gemma-3-12b-it
-
-# Optional: Drive OAuth support
-GOOGLE_CLIENT_ID=your_google_client_id
-GOOGLE_CLIENT_SECRET=your_google_client_secret
-GOOGLE_REDIRECT_URI=http://localhost:8000/auth/callback
+FRONTEND_URL=http://localhost:5173
+ENV=development
+PORT=8000
 ```
 
-## Installation
+When `DATABASE_URL` is omitted locally, RagKno uses an ignored SQLite database. Google OAuth variables are only required for Google sign-in and Drive sync.
 
-### 1) Python dependencies
-
-From project root:
+### 2. Install dependencies
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate
 uv sync --dev
+npm --prefix frontend ci
 ```
 
-Or if you use `uv`:
+### 3. Run the application
+
+In terminal one:
 
 ```bash
-uv sync
+uv run uvicorn backend.main:app --host 127.0.0.1 --port 8000 --reload
 ```
 
-### 2) Frontend dependencies
+In terminal two:
 
 ```bash
-cd frontend
-npm install
+npm --prefix frontend run dev
 ```
 
-## Running the App
+Open [http://localhost:5173](http://localhost:5173). API documentation is available at [http://localhost:8000/docs](http://localhost:8000/docs).
 
-Open two terminals.
+## Environment variables
 
-### Terminal A: Backend
+Start from [`.env.example`](.env.example). The production-critical settings are:
 
-From project root:
+| Variable | Purpose |
+| --- | --- |
+| `DATABASE_URL` | PostgreSQL connection used for users, sessions, chats, metadata, and OAuth tokens |
+| `AGENTROUTER_API_KEY` | Primary model-provider credential |
+| `LLM_PROVIDER` | `agentrouter` or `google` |
+| `RAGKNO_SESSION_SECRET` | Random secret of at least 32 characters |
+| `FRONTEND_URL` | Canonical HTTPS frontend origin |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Google login and Drive OAuth credentials |
+| `GOOGLE_APP_REDIRECT_URI` | Google sign-in callback, normally `https://app.example.com/api/login/google/callback` |
+| `GOOGLE_REDIRECT_URI` | Drive callback, normally `https://app.example.com/api/auth/callback` |
+| `RAGKNO_DATA_DIR` | Durable runtime directory; `/data` in the Docker deployment |
+| `CHROMA_PERSIST_DIR` | Optional explicit Chroma location |
+
+Never commit `.env`, provider keys, OAuth credentials, database files, uploaded documents, or vector-store data. The repository ignore rules cover these artifacts; run the readiness checks below before every public release.
+
+## Deployment
+
+The supported deployment path is:
+
+1. **Cloudflare Pages** builds `frontend/` and serves the application.
+2. **Cloudflare Pages Functions** proxies `/api/*` to the backend so cookies and OAuth callbacks remain first-party.
+3. **Hugging Face Docker Space** runs FastAPI on port `7860` with one worker.
+4. **Persistent storage mounted at `/data`** preserves embeddings and model cache across Space restarts.
+5. **Managed PostgreSQL** preserves user and conversation data.
+
+Follow the complete, ordered setup in **[Deployment guide](docs/DEPLOYMENT.md)**. It includes Cloudflare build settings, Hugging Face secrets, OAuth callback URLs, persistence, smoke tests, rollback, and the current hosting limitations.
+
+## API
+
+FastAPI publishes an interactive OpenAPI reference at `/docs`. Common routes include:
+
+- `GET /health/live` and `GET /health/ready`
+- `POST /auth/register`, `POST /auth/login`, and `POST /auth/logout`
+- `GET|POST /threads` and `GET /threads/{id}/messages`
+- `POST /ingest/files`, `POST /ingest/url`, and `POST /drive/sync`
+- `POST /query` and `POST /query/stream`
+- `GET /ingest/sources` and `POST /ingest/unindex`
+
+Mutation routes validate the session and CSRF token. Retrieval and source operations are scoped to the authenticated user.
+
+## Quality checks
 
 ```bash
-source .venv/bin/activate
-python backend/main.py
+uv lock --check
+uv run pytest -q
+uv sync --group evaluation
+uv run python evaluation/ragas_eval.py --help
+npm --prefix frontend test
+npm --prefix frontend run build
+git diff --check
 ```
 
-Backend runs on: `http://localhost:8000`
-
-### Terminal B: Frontend
-
-From project root:
+Run the sample RAGAS evaluation after indexing a representative dataset:
 
 ```bash
-cd frontend
-npm run dev -- --host 0.0.0.0 --port 5173
+uv sync --group evaluation
+uv run python evaluation/ragas_eval.py \
+  --dataset evaluation/testset.sample.json \
+  --user-id YOUR_USER_ID \
+  --top-k 3
 ```
 
-Frontend runs on: `http://localhost:5173`
+## Repository layout
 
-## API Overview
-
-- Health
-	- `GET /health`
-- Query
-	- `POST /query`
-	- `POST /query/stream` (SSE)
-- Memory
-	- `POST /memory/reset`
-- Ingestion
-	- `POST /ingest/files`
-	- `POST /ingest/url`
-	- `GET /ingest/sources`
-	- `POST /ingest/unindex`
-- Google Drive
-	- `GET /auth/url`
-	- `GET /auth/callback`
-	- `GET /auth/status`
-	- `DELETE /drive/disconnect`
-	- `GET /drive/files`
-	- `POST /drive/sync`
-
-## Evaluation (RAGAS)
-
-Run evaluation on a JSON test set:
-
-```bash
-source .venv/bin/activate
-python evaluation/ragas_eval.py --dataset evaluation/testset.sample.json --user-id YOUR_USER_ID --top-k 3
+```text
+backend/                 FastAPI routes, auth, ingestion, and streaming
+frontend/                React application and Cloudflare Pages Function
+src/                     Retrieval, storage, ingestion, and Drive integration
+evaluation/              RAGAS evaluation command and sample dataset
+deploy/huggingface/      Hugging Face Space metadata template
+docs/                    Deployment guide and repository screenshots
+.github/workflows/       CI checks
 ```
 
-## Notes for First Run
+## Documentation
 
-- If you changed chunking/retrieval logic, re-index documents for best results.
-- Drive OAuth tokens and chat history are stored per user in the configured database.
+The app includes a responsive documentation experience at `/docs`. Repository documentation includes:
 
-## Current Retrieval Design
+- [Production deployment](docs/DEPLOYMENT.md)
+- [Contributing](CONTRIBUTING.md)
+- [Security policy](SECURITY.md)
+- [Code of Conduct](CODE_OF_CONDUCT.md)
 
-- Semantic chunking for better meaning boundaries
-- Parent-child chunk strategy:
-	- Retrieve smaller child chunks
-	- Expand to larger parent context for generation
-- Hybrid dense+sparse retrieval:
-- Chroma dense candidates
-	- BM25 sparse candidates
-	- Score fusion and reranking
+## Contributing
+
+Issues and pull requests are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) for setup, branch, commit, test, and pull-request guidance. Please follow the [Code of Conduct](CODE_OF_CONDUCT.md). Report vulnerabilities privately using the process in [SECURITY.md](SECURITY.md).
 
 ## License
 
-Apache License 2.0
+RagKno is available under the [Apache License 2.0](LICENSE.md).

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { ArrowUp, ChevronDown, Database, FileText, Globe, Sparkles } from 'lucide-react'
+import brandLogo from '../../assets/figma-logo-mark.svg'
 
 const conversations = [
   {
@@ -66,7 +67,32 @@ export default function ProductChatDemo() {
   }
 
   return (
-    <section className="chat-demo-section" data-nav-theme="light" aria-labelledby="chat-demo-title">
+    <section id="chat-demo" className="chat-demo-section" data-nav-theme="light" aria-labelledby="chat-demo-title">
+      <div className="chat-demo-wave" aria-hidden="true">
+        <div className="chat-demo-wave-glow" />
+        <svg viewBox="0 0 1440 980" preserveAspectRatio="none">
+          <defs>
+            <linearGradient id="chat-wave-top" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0" stopColor="#0ea5e9" />
+              <stop offset="0.58" stopColor="#7dd3fc" />
+              <stop offset="1" stopColor="#e0f2fe" />
+            </linearGradient>
+            <linearGradient id="chat-wave-center" x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0" stopColor="#e0f2fe" />
+              <stop offset="0.48" stopColor="#ffffff" />
+              <stop offset="1" stopColor="#dbeafe" />
+            </linearGradient>
+            <linearGradient id="chat-wave-bottom" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0" stopColor="#bae6fd" />
+              <stop offset="0.55" stopColor="#38bdf8" />
+              <stop offset="1" stopColor="#0284c7" />
+            </linearGradient>
+          </defs>
+          <path className="chat-wave-layer chat-wave-layer-top" fill="url(#chat-wave-top)" d="M-120 190C170 22 384-56 664 56c305 122 404 296 896 246V-80H-120Z" />
+          <path className="chat-wave-layer chat-wave-layer-center" fill="url(#chat-wave-center)" d="M-120 258c264 30 390 194 667 224 335 36 476-224 1013-155v354c-335-79-525 103-842 106-319 4-509-185-838-206Z" />
+          <path className="chat-wave-layer chat-wave-layer-bottom" fill="url(#chat-wave-bottom)" d="M-120 601c293 25 417 218 720 222 332 4 481-221 960-153v390H-120Z" />
+        </svg>
+      </div>
       <div className="chat-demo-inner">
         <div className="section-head-light">
           <span className="section-badge-light"><Sparkles size={12} /> DOCUMENT Q&amp;A</span>
@@ -82,7 +108,9 @@ export default function ProductChatDemo() {
               <motion.div key={active.id} className="premium-chat-exchange" initial={reduceMotion ? false : { opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={reduceMotion ? undefined : { opacity: 0, y: -8 }} transition={{ duration: .24 }}>
                 <div className="premium-user-message">{active.question}</div>
                 <article className="premium-assistant-answer">
-                  <div className="premium-answer-mark"><Sparkles size={15} /></div>
+                  <div className="premium-answer-mark">
+                    <img src={brandLogo} alt="" aria-hidden="true" />
+                  </div>
                   <div>
                     <button type="button" className="premium-source-toggle" onClick={() => setSourcesOpen((value) => !value)} aria-expanded={sourcesOpen}>
                       <Database size={14} /> Used {active.sources.length} sources <ChevronDown size={14} className={sourcesOpen ? 'open' : ''} />
