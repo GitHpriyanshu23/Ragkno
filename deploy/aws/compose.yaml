@@ -1,0 +1,45 @@
+name: ragkno
+
+services:
+  backend:
+    build:
+      context: ../..
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      ENV: production
+      RAGKNO_DATA_DIR: /data
+      HF_HOME: /data/huggingface
+      WEB_CONCURRENCY: "1"
+    volumes:
+      - backend_data:/data
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      BACKEND_DOMAIN: ${BACKEND_DOMAIN:?Set BACKEND_DOMAIN in deploy/aws/.env}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - backend
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  backend_data:
+  caddy_data:
+  caddy_config:

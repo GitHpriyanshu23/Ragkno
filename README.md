@@ -142,7 +142,7 @@ The supported deployment path is:
 4. **Persistent storage mounted at `/data`** preserves embeddings and model cache across Space restarts.
 5. **Managed PostgreSQL** preserves user and conversation data.
 
-Follow the complete, ordered setup in **[Deployment guide](docs/DEPLOYMENT.md)**. It includes Cloudflare build settings, Hugging Face secrets, OAuth callback URLs, persistence, smoke tests, rollback, and the current hosting limitations.
+For Cloudflare Pages with an AWS EC2 backend, follow **[AWS deployment guide](docs/AWS_DEPLOYMENT.md)**. It includes the new-account free-plan limits, server setup, HTTPS, persistent storage, OAuth callbacks, and launch checks. The alternative **[Hugging Face deployment guide](docs/DEPLOYMENT.md)** describes Spaces setup and its hosting limitations.
 
 ## API
 

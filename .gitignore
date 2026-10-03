@@ -21,6 +21,7 @@ venv/
 .env.*
 !.env.example
 token.json
+oauth_verifiers.json
 credentials*.json
 client_secret*.json
 *.pem

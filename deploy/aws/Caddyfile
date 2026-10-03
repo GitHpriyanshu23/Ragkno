@@ -1,0 +1,6 @@
+{$BACKEND_DOMAIN} {
+    reverse_proxy backend:7860 {
+        # Deliver chat tokens immediately rather than buffering responses.
+        flush_interval -1
+    }
+}
