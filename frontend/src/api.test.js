@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { clearApiSession, getCurrentUser, ingestUrl, loginWithPassword, queryRAG, queryRAGStream, registerUser } from './api.js'
+import { clearApiSession, getCurrentUser, ingestFiles, ingestUrl, loginWithPassword, queryRAG, queryRAGStream, registerUser } from './api.js'
 
 function jsonResponse(payload, status = 200) {
   return new Response(JSON.stringify(payload), { status, headers: { 'Content-Type': 'application/json' } })
@@ -12,6 +12,30 @@ describe('API client security and streaming', () => {
   })
 
   afterEach(() => vi.restoreAllMocks())
+
+  it('ends the session check when the server never responds', async () => {
+    vi.useFakeTimers()
+    try {
+      fetch.mockImplementation((_url, { signal }) => new Promise((_resolve, reject) => {
+        signal.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')))
+      }))
+      const request = getCurrentUser()
+      const assertion = expect(request).rejects.toMatchObject({ name: 'AbortError' })
+      await vi.advanceTimersByTimeAsync(15000)
+      await assertion
+      expect(fetch).toHaveBeenCalledTimes(1)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('shows file extraction errors instead of reporting a successful upload', async () => {
+    fetch.mockResolvedValue(jsonResponse({ ok: false, source_count: 0, sources: [
+      { display_name: 'scan.pdf', error: 'File is empty or contains no extractable text' },
+    ] }))
+    await expect(ingestFiles([new File(['scan'], 'scan.pdf', { type: 'application/pdf' })]))
+      .rejects.toThrow('scan.pdf: File is empty or contains no extractable text')
+  })
 
   it('sends cookies and the session CSRF token on mutations', async () => {
     fetch

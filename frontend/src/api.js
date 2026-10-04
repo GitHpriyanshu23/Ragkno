@@ -79,9 +79,15 @@ export async function loginWithPassword({ email, password }) {
 }
 
 export async function getCurrentUser() {
-  const payload = await jsonRequest('/auth/me', {}, { retries: 0 })
-  csrfToken = payload?.csrf_token || ''
-  return payload
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), 15000)
+  try {
+    const payload = await jsonRequest('/auth/me', { signal: controller.signal }, { retries: 0 })
+    csrfToken = payload?.csrf_token || ''
+    return payload
+  } finally {
+    clearTimeout(timer)
+  }
 }
 
 export async function logoutUser() {
@@ -104,10 +110,16 @@ export function syncDrive(fileIds = null) {
 
 export function disconnectDrive() { return jsonRequest('/drive/disconnect', { method: 'DELETE' }) }
 
-export function ingestFiles(files) {
+export async function ingestFiles(files) {
   const form = new FormData()
   files.forEach((file) => form.append('files', file))
-  return jsonRequest('/ingest/files', { method: 'POST', body: form })
+  const result = await jsonRequest('/ingest/files', { method: 'POST', body: form })
+  if (result.ok === false || result.source_count === 0) {
+    const failures = (result.sources || []).filter((source) => source.error)
+      .map((source) => `${source.display_name}: ${source.error}`)
+    throw new Error(failures.join('; ') || result.message || 'No files were indexed.')
+  }
+  return result
 }
 
 export function ingestUrl(url) {

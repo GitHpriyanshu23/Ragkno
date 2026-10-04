@@ -809,7 +809,9 @@ def drive_disconnect(request: Request):
 
 
 @app.post("/ingest/files", summary="Upload local files and index into Chroma")
-async def ingest_files(request: Request, files: list[UploadFile] = File(...)):
+def ingest_files(request: Request, files: list[UploadFile] = File(...)):
+    # Parsing and embedding are blocking work. A synchronous route runs in
+    # FastAPI's worker pool so uploads cannot stall session and health requests.
     user = _require_user(request, mutation=True)
     if not files:
         raise HTTPException(status_code=400, detail="No files provided.")
@@ -842,7 +844,7 @@ async def ingest_files(request: Request, files: list[UploadFile] = File(...)):
             result["error"] = f"Content type '{content_type}' does not match {suffix}"
             preliminary.append(result)
             continue
-        content = await file.read(MAX_UPLOAD_BYTES + 1)
+        content = file.file.read(MAX_UPLOAD_BYTES + 1)
         if len(content) > MAX_UPLOAD_BYTES:
             result["error"] = "File exceeds the 50MB limit"
             preliminary.append(result)

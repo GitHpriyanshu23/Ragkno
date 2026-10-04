@@ -2,6 +2,8 @@ import importlib
 import json
 import os
 import time
+import asyncio
+import threading
 
 import pytest
 from fastapi.testclient import TestClient
@@ -42,6 +44,38 @@ def test_data_routes_require_authentication(api):
     assert client.get("/ingest/sources").status_code == 401
     assert client.get("/feedback").status_code == 401
     assert client.post("/query", json={"query": "x", "thread_id": "t", "request_id": "request-1"}).status_code == 401
+
+
+def test_upload_parsing_does_not_block_session_requests(api, monkeypatch):
+    import httpx
+
+    main, _, auth = api
+    started = threading.Event()
+    release = threading.Event()
+
+    def slow_parse(*_args):
+        started.set()
+        release.wait(5)
+        return []
+
+    monkeypatch.setattr(main, "load_uploaded_file", slow_parse)
+
+    async def exercise():
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=main.app), base_url="http://test") as client:
+            upload = asyncio.create_task(client.post(
+                "/ingest/files", files={"files": ("notes.txt", b"notes", "text/plain")}, **auth("alice"),
+            ))
+            try:
+                assert await asyncio.to_thread(started.wait, 2)
+                response = await asyncio.wait_for(client.get("/auth/me", **auth("alice")), 2)
+                assert response.status_code == 200
+                assert response.json()["authenticated"] is True
+                assert not upload.done(), "Session requests must finish while parsing is still running"
+            finally:
+                release.set()
+                await upload
+
+    asyncio.run(exercise())
 
 
 def test_csrf_and_thread_ownership_are_enforced(api):
