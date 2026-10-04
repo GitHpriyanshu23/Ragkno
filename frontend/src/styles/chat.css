@@ -799,8 +799,21 @@
 }
 
 @media (max-width: 920px) {
+  /* The document's legacy 100vh minimum can exceed 100dvh when the
+     browser toolbar is visible, exposing the light body below the chat. */
+  html:has(.chat-main),
+  body:has(.chat-main),
+  #root:has(.chat-main) {
+    height: 100dvh;
+    min-height: 0;
+    overflow: hidden;
+    background: #000;
+  }
+
   .app-shell:has(> .chat-main) {
-    min-height: 100dvh;
+    height: 100dvh;
+    min-height: 0;
+    background: #000;
   }
 
   .chat-page {
