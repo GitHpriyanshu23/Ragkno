@@ -222,7 +222,7 @@ function AppShell({ children, toasts, onDismissToast }) {
       <main className={isAppRoute ? 'chat-main' : isHomeRoute || isLoginRoute ? 'home-main' : 'page-main'}>{children}</main>
 
       {toasts.length > 0 && (
-        <div className="toast-stack" role="status" aria-live="polite">
+        <div className={`toast-stack${isAppRoute ? ' toast-stack-dark' : ''}`} role="status" aria-live="polite">
           {toasts.map((toast) => (
             <div key={toast.id} className={`toast ${toast.type || 'info'}`}>
               <p>{toast.message}</p>

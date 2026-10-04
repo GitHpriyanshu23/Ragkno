@@ -602,6 +602,7 @@ a {
 .toast {
   border: 1px solid var(--border);
   background: color-mix(in srgb, var(--surface) 92%, transparent);
+  color: var(--text);
   backdrop-filter: blur(8px);
   padding: 12px;
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.08);
@@ -647,6 +648,35 @@ a {
 .toast-action:hover,
 .toast-close:hover {
   background: var(--surface-muted);
+}
+
+/* Chat and its utility pages use a dark surface, including notifications. */
+.toast-stack-dark {
+  --border: #3a3a3a;
+  --surface: #242424;
+  --surface-soft: #303030;
+  --surface-muted: #3a3a3a;
+  --text: #ececec;
+  color-scheme: dark;
+}
+
+.toast-stack-dark .toast {
+  border-radius: 12px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
+}
+
+.toast-stack-dark .toast.error { border-left-color: #f87171; }
+.toast-stack-dark .toast.success { border-left-color: #34d399; }
+.toast-stack-dark .toast.info { border-left-color: #60a5fa; }
+
+.toast-stack-dark .toast-action,
+.toast-stack-dark .toast-close {
+  border-radius: 6px;
+}
+
+.toast-stack-dark button:focus-visible {
+  outline: 2px solid #a3a3a3;
+  outline-offset: 2px;
 }
 
 @media (max-width: 900px) {
