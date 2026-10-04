@@ -355,8 +355,7 @@
   .account-footer { margin-top: 12px; }
 
   .account-visual {
-    min-height: 300px;
-    border-radius: 0;
+    display: none;
   }
 }
 
@@ -376,7 +375,6 @@
   }
 
   .account-footer span { display: none; }
-  .account-visual { min-height: 230px; }
 }
 
 @media (max-height: 700px) and (min-width: 821px) {
