@@ -3,6 +3,8 @@ import re
 import math
 import json
 import time
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 from collections.abc import Iterator
 
 import requests
@@ -29,6 +31,10 @@ class RAGSearch:
         self.agentrouter_api_key = os.getenv("AGENTROUTER_API_KEY") or os.getenv("AGENT_ROUTER_API_KEY")
         self.agentrouter_base_url = os.getenv("AGENTROUTER_BASE_URL", "https://agentrouter.org/v1")
         self.google_api_key = os.getenv("GOOGLE_API_KEY")
+        self.agentrouter_fallback_enabled = os.getenv("LLM_AGENTROUTER_FALLBACK_ENABLED", "false").lower() == "true"
+        self.agentrouter_fallback_model = os.getenv("AGENTROUTER_MODEL", llm_model)
+        self.agentrouter_headers = {"User-Agent": "codex_cli_rs/0.1.0", "x-app": "cli"}
+        self._model_cooldowns = {}
         # Provider latency can spike before the first streamed token. Keep the
         # connect window short, but never inherit an impractically small read
         # timeout from a parent shell or deployment environment.
@@ -46,10 +52,10 @@ class RAGSearch:
 
         if provider_pref == "google":
             self.provider = "google"
-            self.llm_model = os.getenv("GOOGLE_LLM_MODEL", "gemini-2.5-flash")
-            fallback_config = os.getenv("GOOGLE_LLM_FALLBACK_MODELS", "")
+            self.llm_model = os.getenv("GOOGLE_LLM_MODEL", "gemini-3.5-flash-lite")
+            fallback_config = os.getenv("GOOGLE_LLM_FALLBACK_MODELS", "gemini-3.1-flash-lite,gemini-3.8-flash,gemini-3.7-flash,gemini-3.6-flash")
             self.fallback_models = [item.strip() for item in fallback_config.split(",") if item.strip()]
-            self.llm = ChatGoogleGenerativeAI(google_api_key=self.google_api_key, model=self.llm_model)
+            self.llm = ChatGoogleGenerativeAI(google_api_key=self.google_api_key, model=self.llm_model, timeout=self.request_timeout_seconds, max_retries=0)
             print(f"[INFO] Google LLM initialized: {self.llm_model}")
         elif self.agentrouter_api_key:
             self.provider = "agentrouter"
@@ -72,10 +78,10 @@ class RAGSearch:
             print(f"[INFO] AgentRouter LLM initialized: {self.llm_model} at {self.agentrouter_base_url}")
         elif self.google_api_key:
             self.provider = "google"
-            self.llm_model = os.getenv("GOOGLE_LLM_MODEL", "gemini-2.5-flash")
-            fallback_config = os.getenv("GOOGLE_LLM_FALLBACK_MODELS", "")
+            self.llm_model = os.getenv("GOOGLE_LLM_MODEL", "gemini-3.5-flash-lite")
+            fallback_config = os.getenv("GOOGLE_LLM_FALLBACK_MODELS", "gemini-3.1-flash-lite,gemini-3.8-flash,gemini-3.7-flash,gemini-3.6-flash")
             self.fallback_models = [item.strip() for item in fallback_config.split(",") if item.strip()]
-            self.llm = ChatGoogleGenerativeAI(google_api_key=self.google_api_key, model=self.llm_model)
+            self.llm = ChatGoogleGenerativeAI(google_api_key=self.google_api_key, model=self.llm_model, timeout=self.request_timeout_seconds, max_retries=0)
             print(f"[INFO] Google LLM initialized: {self.llm_model}")
         else:
             raise ValueError(
@@ -111,13 +117,45 @@ class RAGSearch:
                     "x-app": "cli",
                 }),
             )
-        return ChatGoogleGenerativeAI(google_api_key=self.google_api_key, model=model_name)
+        return ChatGoogleGenerativeAI(google_api_key=self.google_api_key, model=model_name, timeout=self.request_timeout_seconds, max_retries=0)
 
     def _model_candidates(self, requested_model: str | None = None) -> list[str]:
         primary = (requested_model or self.llm_model).strip()
         if primary not in self.allowed_models:
             raise ValueError("Requested model is not enabled by the server")
-        return [primary, *[model for model in self.fallback_models if model != primary]]
+        return list(dict.fromkeys([primary, *self.fallback_models]))
+
+    def _provider_candidates(self, requested_model=None):
+        candidates = [(self.provider, model) for model in self._model_candidates(requested_model)]
+        if self.provider == "google" and getattr(self, "agentrouter_fallback_enabled", False) and getattr(self, "agentrouter_api_key", None):
+            candidates.append(("agentrouter", self.agentrouter_fallback_model))
+        return candidates
+
+    def _cool_down_rate_limited_model(self, provider, model, error):
+        detail = str(error).lower()
+        if not any(marker in detail for marker in ("429", "resource_exhausted", "quota", "rate limit")):
+            return False
+        delay = 60.0
+        match = re.search(r"(?:retry in|retrydelay[\"'\s:]+)\s*(\d+(?:\.\d+)?)s", detail)
+        if match:
+            delay = max(delay, float(match.group(1)))
+        if provider == "google" and any(marker in detail for marker in ("perday", "per_day", "per day", "daily")):
+            now = datetime.now(ZoneInfo("America/Los_Angeles"))
+            reset = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+            delay = max(delay, (reset - now).total_seconds())
+        if not hasattr(self, "_model_cooldowns"):
+            self._model_cooldowns = {}
+        self._model_cooldowns[(provider, model)] = time.monotonic() + delay
+        return True
+
+    def _model_is_cooling_down(self, provider, model):
+        return getattr(self, "_model_cooldowns", {}).get((provider, model), 0) > time.monotonic()
+
+    def _exhausted_provider_message(self, error, streaming):
+        if self.provider == "google":
+            backup = " and the AgentRouter backup" if len(self._provider_candidates()) > len(self._model_candidates()) else ""
+            return f"The configured Gemini models{backup} are unavailable. Please try again later."
+        return self._provider_failure_message(error, streaming=streaming)
 
     @staticmethod
     def _should_fallback_for_error(error_text: str) -> bool:
@@ -130,6 +168,9 @@ class RAGSearch:
                 "budget pool",
                 "exhausted",
                 "unauthorized client",
+                "invalid api key",
+                "api_key_invalid",
+                "403",
                 "401",
                 "402",
                 "404",
@@ -175,22 +216,28 @@ class RAGSearch:
         return f"Google AI could not complete the {action}."
 
     def _invoke_with_fallback(self, prompt: str, requested_model: str | None = None):
-        candidates = self._model_candidates(requested_model)
+        candidates = self._provider_candidates(requested_model)
         first_error = None
-        for index, model in enumerate(candidates):
+        for index, (provider, model) in enumerate(candidates):
+            if self._model_is_cooling_down(provider, model):
+                continue
             try:
-                if self.provider == "agentrouter":
+                if provider == "agentrouter":
                     content = "".join(self._stream_agentrouter_response(prompt, model)).strip()
                     if not content:
                         raise RuntimeError("The model returned an empty completion stream")
                     return AIMessage(content=content)
-                return self._build_llm(model).invoke([prompt])
+                response = self._build_llm(model).invoke([prompt])
+                if not getattr(response, "content", None):
+                    raise RuntimeError("The model returned an empty completion stream")
+                return response
             except Exception as err:
                 first_error = first_error or err
+                self._cool_down_rate_limited_model(provider, model, err)
                 if index == 0 and not self._should_fallback_for_error(str(err)):
                     raise
                 print(f"[WARN] Model '{model}' failed: {err}")
-        raise RuntimeError(self._provider_failure_message(first_error, streaming=False)) from first_error
+        raise RuntimeError(self._exhausted_provider_message(first_error, streaming=False)) from first_error
 
     def _stream_with_fallback(self, prompt: str, requested_model: str | None = None) -> Iterator[str]:
         def stream_from_llm(llm) -> Iterator[str]:
@@ -210,15 +257,17 @@ class RAGSearch:
                 if content:
                     yield content
 
-        candidates = self._model_candidates(requested_model)
+        candidates = self._provider_candidates(requested_model)
         first_error = None
-        for index, model in enumerate(candidates):
+        for index, (provider, model) in enumerate(candidates):
+            if self._model_is_cooling_down(provider, model):
+                continue
             for attempt in range(2):
                 emitted = False
                 try:
                     stream = (
                         self._stream_agentrouter_response(prompt, model)
-                        if self.provider == "agentrouter"
+                        if provider == "agentrouter"
                         else stream_from_llm(self._build_llm(model))
                     )
                     for piece in stream:
@@ -232,7 +281,8 @@ class RAGSearch:
                     if emitted:
                         raise RuntimeError("Response stream was interrupted") from err
                     transient = self._should_fallback_for_error(str(err))
-                    if transient and attempt == 0:
+                    rate_limited = self._cool_down_rate_limited_model(provider, model, err)
+                    if transient and not rate_limited and attempt == 0:
                         print(f"[WARN] Model '{model}' stream attempt failed; retrying once: {err}")
                         time.sleep(0.35)
                         continue
@@ -240,7 +290,7 @@ class RAGSearch:
                         raise
                     print(f"[WARN] Model '{model}' stream failed: {err}")
                     break
-        raise RuntimeError(self._provider_failure_message(first_error, streaming=True)) from first_error
+        raise RuntimeError(self._exhausted_provider_message(first_error, streaming=True)) from first_error
 
     def _stream_agentrouter_response(self, prompt: str, model: str) -> Iterator[str]:
         """Read AgentRouter SSE directly.

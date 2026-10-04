@@ -382,6 +382,85 @@ def test_agentrouter_transient_failure_retries_before_fallback(monkeypatch):
     assert attempts == ["primary-model", "primary-model"]
 
 
+@pytest.mark.parametrize("streaming", [True, False])
+def test_gemini_chain_uses_agentrouter_last_and_skips_exhausted_models(monkeypatch, streaming):
+    from src.search import RAGSearch
+    from langchain_core.messages import AIMessage
+
+    models = ["gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.6-flash"]
+    monkeypatch.setenv("LLM_PROVIDER", "google")
+    monkeypatch.setenv("GOOGLE_API_KEY", "test-google-key")
+    monkeypatch.setenv("AGENTROUTER_API_KEY", "test-router-key")
+    monkeypatch.setenv("AGENTROUTER_MODEL", "deepseek-v4-flash")
+    monkeypatch.setenv("LLM_AGENTROUTER_FALLBACK_ENABLED", "true")
+    monkeypatch.delenv("GOOGLE_LLM_MODEL", raising=False)
+    monkeypatch.delenv("GOOGLE_LLM_FALLBACK_MODELS", raising=False)
+    monkeypatch.setattr("src.search.ChromaVectorStore", lambda **_kwargs: object())
+    attempts = []
+
+    class FakeGoogle:
+        def __init__(self, **kwargs):
+            self.model = kwargs["model"]
+            assert kwargs["max_retries"] == 0
+        def invoke(self, _prompt):
+            attempts.append(self.model)
+            raise RuntimeError("429 RESOURCE_EXHAUSTED quota exceeded; retry in 120s")
+        def stream(self, prompt):
+            self.invoke(prompt)
+            yield AIMessage(content="unreachable")
+
+    monkeypatch.setattr("src.search.ChatGoogleGenerativeAI", FakeGoogle)
+    rag = RAGSearch()
+
+    def router(_prompt, model):
+        attempts.append(model)
+        yield "Backup answer"
+    monkeypatch.setattr(rag, "_stream_agentrouter_response", router)
+    call = lambda: "".join(rag._stream_with_fallback("question")) if streaming else rag._invoke_with_fallback("question").content
+    assert call() == "Backup answer"
+    assert attempts == [*models, "deepseek-v4-flash"]
+    assert call() == "Backup answer"
+    assert attempts == [*models, "deepseek-v4-flash", "deepseek-v4-flash"]
+    assert rag._model_cooldowns[("google", models[0])] - time.monotonic() > 115
+
+
+def test_gemini_partial_answer_never_switches_providers(monkeypatch):
+    from src.search import RAGSearch
+    from langchain_core.messages import AIMessage
+    rag = RAGSearch.__new__(RAGSearch)
+    rag.provider = "google"
+    rag.llm_model = "gemini-3.5-flash-lite"
+    rag.fallback_models = ["gemini-3.1-flash-lite"]
+    rag.allowed_models = frozenset([rag.llm_model, *rag.fallback_models])
+    rag.agentrouter_fallback_enabled = True
+    rag.agentrouter_api_key = "test"
+    rag.agentrouter_fallback_model = "deepseek-v4-flash"
+
+    class PartialGoogle:
+        def stream(self, _prompt):
+            yield AIMessage(content="Partial answer")
+            raise RuntimeError("429 quota exhausted")
+    monkeypatch.setattr(rag, "_build_llm", lambda _model: PartialGoogle())
+    monkeypatch.setattr(rag, "_stream_agentrouter_response", lambda *_args: pytest.fail("Must not append a different provider's answer"))
+    stream = rag._stream_with_fallback("question")
+    assert next(stream) == "Partial answer"
+    with pytest.raises(RuntimeError, match="Response stream was interrupted"):
+        next(stream)
+
+
+def test_readiness_requires_selected_google_key(api, monkeypatch):
+    main, _client, _auth = api
+    monkeypatch.setenv("LLM_PROVIDER", "google")
+    monkeypatch.setenv("AGENTROUTER_API_KEY", "backup-only")
+    monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
+    monkeypatch.setattr(main, "_get_store", lambda: type("Store", (), {"collection": type("Collection", (), {"count": lambda self: 0})()})())
+    assert main.health()["llm"]["configured"] is False
+    with pytest.raises(main.HTTPException) as error:
+        main.health_ready()
+    assert error.value.status_code == 503
+    assert error.value.detail["checks"]["llm_configured"] is False
+
+
 def test_agentrouter_timeout_error_is_actionable():
     from src.search import RAGSearch
 

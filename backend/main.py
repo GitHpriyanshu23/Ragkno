@@ -1279,7 +1279,7 @@ def health():
         "status": "ok",
         "llm": {
             "provider": provider,
-            "model": os.getenv("AGENTROUTER_MODEL", "gpt-5.5") if provider == "agentrouter" else os.getenv("GOOGLE_LLM_MODEL", "gemini-2.5-flash"),
+            "model": os.getenv("AGENTROUTER_MODEL", "deepseek-v4-flash") if provider == "agentrouter" else os.getenv("GOOGLE_LLM_MODEL", "gemini-3.5-flash-lite"),
             "configured": bool(
                 (os.getenv("AGENTROUTER_API_KEY") or os.getenv("AGENT_ROUTER_API_KEY"))
                 if provider == "agentrouter"
@@ -1309,7 +1309,7 @@ def health_ready():
         checks["vector_store"] = True
     except Exception:
         pass
-    checks["llm_configured"] = bool(os.getenv("GOOGLE_API_KEY") or os.getenv("AGENTROUTER_API_KEY") or os.getenv("AGENT_ROUTER_API_KEY"))
+    checks["llm_configured"] = health()["llm"]["configured"]
     if not all(checks.values()):
         raise HTTPException(status_code=503, detail={"status": "not_ready", "checks": checks})
     return {"status": "ready", "checks": checks}
