@@ -1,0 +1,13 @@
+# Keep account entry points and private workspace routes out of search.
+/login
+  X-Robots-Tag: noindex
+/login/*
+  X-Robots-Tag: noindex
+/chat
+  X-Robots-Tag: noindex
+/chat/*
+  X-Robots-Tag: noindex
+/data
+  X-Robots-Tag: noindex
+/data/*
+  X-Robots-Tag: noindex

@@ -1,0 +1,23 @@
+# RagKno
+
+> RagKno is an open-source retrieval-augmented generation workspace for asking questions about documents, public web pages, and Google Drive files, with streamed answers and source citations.
+
+## Product
+
+- Upload PDF, DOCX, and TXT documents, add public web pages, or import supported Google Drive content.
+- Select sources for a question, retrieve relevant passages, and inspect citations alongside the answer.
+- Manage conversations and indexed sources in an authenticated, user-scoped workspace.
+- Answers may be incomplete or inaccurate; verify important claims against the cited sources.
+
+## Public resources
+
+- [Homepage](https://ragkno.com/): Product overview.
+- [Documentation](https://ragkno.com/docs): Quickstart, supported sources, citations, self-hosting, and troubleshooting.
+- [Privacy policy](https://ragkno.com/privacy): Account and document data handling.
+- [Terms](https://ragkno.com/terms): Terms of use.
+- [Cookie policy](https://ragkno.com/cookies): Cookie information.
+- [Source repository](https://github.com/GitHpriyanshu23/Ragkno): Source code and contribution resources; Apache License 2.0.
+
+## Scope
+
+This file describes public product information. Login pages, chats, uploaded documents, indexed sources, and authenticated API responses are not public reference material. Access to private workspace data requires authentication and authorization.
