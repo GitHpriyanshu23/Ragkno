@@ -151,6 +151,7 @@ class RAGSearch:
                 "handshake",
                 "connection reset",
                 "empty completion stream",
+                "unexpected response format",
             ]
         )
 
@@ -277,6 +278,33 @@ class RAGSearch:
                     raise RuntimeError(
                         f"AgentRouter returned HTTP {response.status_code}"
                         + (f": {detail}" if detail else "")
+                    )
+
+                content_type = response.headers.get("Content-Type", "").split(";", 1)[0].strip().lower()
+                if content_type == "application/json":
+                    # Some compatible gateways ignore stream=True and return a
+                    # complete JSON answer. Do not silently discard that answer.
+                    try:
+                        event = response.json()
+                    except ValueError as error:
+                        raise RuntimeError("AgentRouter unexpected response format: invalid JSON") from error
+                    if not isinstance(event, dict):
+                        raise RuntimeError("AgentRouter unexpected response format: JSON object required")
+                    if event.get("error"):
+                        error = event["error"]
+                        message = error.get("message") if isinstance(error, dict) else str(error)
+                        raise RuntimeError(f"AgentRouter response error: {message or 'unknown error'}")
+                    for choice in event.get("choices") or []:
+                        if isinstance(choice, dict):
+                            message = choice.get("message") or {}
+                            content = message.get("content") if isinstance(message, dict) else None
+                            if isinstance(content, str) and content:
+                                yield content
+                    return
+                if content_type != "text/event-stream":
+                    raise RuntimeError(
+                        f"AgentRouter unexpected response format: HTTP {response.status_code}, "
+                        f"Content-Type {content_type or 'missing'}; expected text/event-stream or application/json"
                     )
 
                 for raw_line in response.iter_lines(decode_unicode=True):

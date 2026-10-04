@@ -209,6 +209,7 @@ def test_agentrouter_stream_ignores_empty_compatibility_events(monkeypatch):
         ok = True
         status_code = 200
         text = ""
+        headers = {"Content-Type": "text/event-stream"}
 
         def __enter__(self):
             return self
@@ -237,6 +238,33 @@ def test_agentrouter_stream_ignores_empty_compatibility_events(monkeypatch):
     rag.request_timeout_seconds = 15
 
     assert "".join(rag._stream_agentrouter_response("question", "test-model")) == "Grounded answer"
+
+
+@pytest.mark.parametrize("content_type,body,expected", [
+    ("application/json", '{"choices":[{"message":{"content":"Answer from JSON"}}]}', "Answer from JSON"),
+    ("text/html", '<html>Gateway page</html>', None),
+    ("application/json", '{"error":{"message":"quota exhausted"}}', None),
+])
+def test_agentrouter_handles_non_sse_responses(monkeypatch, content_type, body, expected):
+    import requests
+    from src.search import RAGSearch
+
+    response = requests.Response()
+    response.status_code = 200
+    response.headers["Content-Type"] = content_type
+    response._content = body.encode()
+    response._content_consumed = True
+    monkeypatch.setattr("src.search.requests.post", lambda *_args, **_kwargs: response)
+    rag = RAGSearch.__new__(RAGSearch)
+    rag.agentrouter_base_url = "https://agentrouter.test/v1"
+    rag.agentrouter_api_key = "test-key"
+    rag.connect_timeout_seconds = 10
+    rag.request_timeout_seconds = 15
+    if expected:
+        assert "".join(rag._stream_agentrouter_response("question", "test-model")) == expected
+    else:
+        with pytest.raises(RuntimeError, match="unexpected response format|quota exhausted"):
+            list(rag._stream_agentrouter_response("question", "test-model"))
 
 
 def test_agentrouter_nonstream_calls_share_the_compatible_parser(monkeypatch):
