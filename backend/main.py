@@ -18,6 +18,7 @@ import threading
 import re
 from collections import defaultdict, deque
 from pathlib import Path
+from urllib.parse import quote
 
 from dotenv import load_dotenv
 from fastapi import BackgroundTasks, FastAPI, File, HTTPException, Request, Response, UploadFile
@@ -401,14 +402,15 @@ def login_google_callback(
 
 
 @app.get("/auth/me", summary="Current logged-in app user")
-def auth_me(request: Request):
+def auth_me(request: Request, response: Response):
+    response.headers["Cache-Control"] = "private, no-store"
     user = _session_user_from_request(request)
     if not user:
         return {"authenticated": False, "user": None}
     user_dict = dict(user)
     csrf_token = user_dict.pop("csrf", None)
     if user.get("picture"):
-        user_dict["avatar_url"] = "/auth/avatar"
+        user_dict["avatar_url"] = f"/auth/avatar?url={quote(str(user['picture']), safe='')}"
     return {"authenticated": True, "user": user_dict, "csrf_token": csrf_token}
 
 
@@ -511,12 +513,12 @@ async def auth_avatar(request: Request, url: str | None = None):
                 content=content,
                 media_type=media_type,
                 headers={
-                    "Cache-Control": "public, max-age=86400",
+                    "Cache-Control": "private, no-store",
                     "Access-Control-Allow-Origin": "*",
                 },
             )
     except Exception as e:
-        return RedirectResponse(url=target_url)
+        return RedirectResponse(url=target_url, headers={"Cache-Control": "private, no-store"})
 
 
 

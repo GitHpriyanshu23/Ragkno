@@ -82,6 +82,7 @@ import AuthPage from './components/AuthPage.jsx'
 import LegalPage from './components/LegalPage.jsx'
 import DocsPage from './components/DocsPage.jsx'
 import ChatErrorBoundary from './components/ChatErrorBoundary.jsx'
+import UserAvatar from './components/UserAvatar.jsx'
 import SiteFooter from './components/SiteFooter.jsx'
 
 function GitHubNavIcon({ size = 20 }) {
@@ -755,44 +756,6 @@ function DataPage({ onToast }) {
 
     </section>
   )
-}
-
-function UserAvatar({ user, displayName, className = ' ' }) {
-  const [attempt, setAttempt] = useState(0)
-  const initial = (displayName || user?.name || user?.email || 'U').trim().slice(0, 1).toUpperCase()
-
-  const sources = useMemo(() => {
-    const list = []
-    if (user?.avatar_url) {
-      const url = user.avatar_url.startsWith('http') ? user.avatar_url : `${API_BASE}${user.avatar_url}`
-      list.push(url)
-    }
-    if (user?.picture) {
-      const proxyUrl = `${API_BASE}/auth/avatar?url=${encodeURIComponent(user.picture)}`
-      if (!list.includes(proxyUrl)) list.push(proxyUrl)
-      if (!list.includes(user.picture)) list.push(user.picture)
-    }
-    return list
-  }, [user?.avatar_url, user?.picture])
-
-  useEffect(() => {
-    setAttempt(0)
-  }, [sources])
-
-  if (sources.length > 0 && attempt < sources.length) {
-    return (
-      <img
-        src={sources[attempt]}
-        alt={displayName || 'Profile'}
-        referrerPolicy="no-referrer"
-        loading="eager"
-        className={className}
-        onError={() => setAttempt((prev) => prev + 1)}
-      />
-    )
-  }
-
-  return <span className={className}>{initial}</span>
 }
 
 function isSimpleGreeting(value) {

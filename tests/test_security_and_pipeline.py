@@ -46,6 +46,59 @@ def test_data_routes_require_authentication(api):
     assert client.post("/query", json={"query": "x", "thread_id": "t", "request_id": "request-1"}).status_code == 401
 
 
+def test_avatar_urls_are_profile_specific_and_not_cacheable(api, monkeypatch):
+    import io
+    import urllib.request
+
+    main, client, _ = api
+    pictures = {
+        "alice": "https://lh3.googleusercontent.com/alice",
+        "bob": "https://lh3.googleusercontent.com/bob",
+    }
+
+    def session(uid, picture):
+        token = main._sign_payload({"sub": uid, "name": uid.title(), "picture": picture, "exp": int(time.time()) + 3600})
+        return {main.SESSION_COOKIE_NAME: token}
+
+    def image_response(request, **kwargs):
+        response = io.BytesIO(request.full_url.encode())
+        response.headers = {"content-type": "image/jpeg"}
+        return response
+
+    monkeypatch.setattr(urllib.request, "urlopen", image_response)
+    urls = []
+    for uid, picture in pictures.items():
+        response = client.get("/auth/me", cookies=session(uid, picture))
+        assert response.headers["cache-control"] == "private, no-store"
+        urls.append(response.json()["user"]["avatar_url"])
+        # The legacy cookie-dependent route must never be publicly cached.
+        legacy = client.get("/auth/avatar", cookies=session(uid, picture))
+        assert legacy.content == picture.encode()
+        assert legacy.headers["cache-control"] == "private, no-store"
+
+    assert urls[0] != urls[1]
+    # A different window's login must not change the picture already displayed.
+    result = client.get(urls[0], cookies=session("bob", pictures["bob"]))
+    assert result.content == pictures["alice"].encode()
+    assert result.headers["cache-control"] == "private, no-store"
+    no_picture = client.get("/auth/me", cookies=session("bob", None)).json()["user"]
+    assert "avatar_url" not in no_picture
+
+
+def test_avatar_redirects_are_not_cacheable(api, monkeypatch):
+    import urllib.request
+
+    _, client, _ = api
+
+    def fail(*args, **kwargs):
+        raise OSError("Image upstream unavailable")
+
+    monkeypatch.setattr(urllib.request, "urlopen", fail)
+    result = client.get("/auth/avatar", params={"url": "https://lh3.googleusercontent.com/alice"}, follow_redirects=False)
+    assert result.status_code == 307
+    assert result.headers["cache-control"] == "private, no-store"
+
+
 def test_upload_parsing_does_not_block_session_requests(api, monkeypatch):
     import httpx
 
