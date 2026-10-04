@@ -524,9 +524,11 @@ class Database:
         user_text: str,
         assistant_text: str,
         sources: Optional[List[Any]] = None,
+        error: Optional[str] = None,
     ) -> None:
-        """Atomically save one successful exchange and mark its request complete."""
+        """Save a successful or interrupted exchange with its request status."""
         sources_json = json.dumps(sources or [], ensure_ascii=False)
+        action_json = json.dumps({"interrupted": True}) if error is not None else None
         with self.engine.begin() as conn:
             thread = conn.execute(
                 text("SELECT id, title FROM threads WHERE id = :id AND user_id = :user_id"),
@@ -559,20 +561,23 @@ class Database:
             ):
                 conn.execute(
                     text("""
-                        INSERT INTO messages (id, thread_id, user_id, role, text, sources_json, created_at)
-                        VALUES (:id, :thread_id, :user_id, :role, :text, :sources, CURRENT_TIMESTAMP)
+                        INSERT INTO messages (id, thread_id, user_id, role, text, sources_json, action_json, created_at)
+                        VALUES (:id, :thread_id, :user_id, :role, :text, :sources, :action, CURRENT_TIMESTAMP)
+                        ON CONFLICT (id) DO UPDATE SET text = excluded.text,
+                            sources_json = excluded.sources_json, action_json = excluded.action_json
+                        WHERE messages.thread_id = excluded.thread_id AND messages.user_id = excluded.user_id
                     """),
-                    {"id": message_id, "thread_id": thread_id, "user_id": user_id, "role": role, "text": content, "sources": message_sources},
+                    {"id": message_id, "thread_id": thread_id, "user_id": user_id, "role": role, "text": content, "sources": message_sources, "action": action_json if role == "assistant" else None},
                 )
 
             conn.execute(
                 text("""
                     UPDATE query_requests
-                    SET status = 'complete', answer = :answer, sources_json = :sources,
-                        error = NULL, updated_at = CURRENT_TIMESTAMP
+                    SET status = :status, answer = :answer, sources_json = :sources,
+                        error = :error, updated_at = CURRENT_TIMESTAMP
                     WHERE request_id = :request_id AND user_id = :user_id AND thread_id = :thread_id
                 """),
-                {"request_id": request_id, "user_id": user_id, "thread_id": thread_id, "answer": assistant_text, "sources": sources_json},
+                {"request_id": request_id, "user_id": user_id, "thread_id": thread_id, "answer": assistant_text, "sources": sources_json, "status": "failed" if error is not None else "complete", "error": str(error)[:1000] if error is not None else None},
             )
 
     # -----------------------------------------------------------------------

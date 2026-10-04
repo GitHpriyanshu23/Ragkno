@@ -133,6 +133,59 @@ def test_query_request_is_idempotent(api, monkeypatch):
     assert fake.calls == 1
 
 
+@pytest.mark.parametrize("endpoint,partial", [("/query", ""), ("/query/stream", ""), ("/query/stream", "Priyanshu is ")])
+def test_failed_query_survives_reload_and_retry(api, monkeypatch, endpoint, partial):
+    main, client, auth = api
+    thread = client.post("/threads", json={"title": "New Chat"}, **auth("alice")).json()["thread"]
+
+    class FakeRag:
+        fail = True
+
+        def answer_with_sources(self, **_kwargs):
+            if self.fail:
+                raise RuntimeError("Provider returned no answer")
+            return {"answer": "Priyanshu is the author.", "sources": []}
+
+        def stream_answer_with_sources(self, **_kwargs):
+            def tokens():
+                if self.fail:
+                    if partial:
+                        yield partial
+                    raise RuntimeError("Provider returned no answer")
+                yield "Priyanshu is the author."
+            return [], tokens()
+
+        def summarize_history(self, *_args):
+            return ""
+
+    rag = FakeRag()
+    monkeypatch.setattr(main, "_get_rag", lambda: rag)
+    payload = {"query": "Who is Priyanshu?", "thread_id": thread["id"], "request_id": "failed-then-retried"}
+    failed = client.post(endpoint, json=payload, **auth("alice"))
+    if endpoint.endswith("stream"):
+        assert "event: error" in failed.text
+    else:
+        assert failed.status_code == 500
+
+    messages_url = f"/threads/{thread['id']}/messages"
+    messages = client.get(messages_url, cookies=auth("alice")["cookies"]).json()["messages"]
+    assert [message["role"] for message in messages] == ["user", "assistant"]
+    assert messages[0]["text"] == payload["query"]
+    assert messages[1]["text"] == (partial.strip() or "The response failed before it completed.")
+    assert messages[1]["action"]["interrupted"] is True
+    assert client.get(messages_url, cookies=auth("bob")["cookies"]).status_code == 404
+
+    rag.fail = False
+    retried = client.post(endpoint, json=payload, **auth("alice"))
+    assert retried.status_code == 200
+    if endpoint.endswith("stream"):
+        assert "event: done" in retried.text
+    messages = client.get(messages_url, cookies=auth("alice")["cookies"]).json()["messages"]
+    assert len(messages) == 2
+    assert messages[1]["text"] == "Priyanshu is the author."
+    assert messages[1]["action"] is None
+
+
 def test_simple_greeting_is_answered_without_loading_rag(api, monkeypatch):
     main, client, auth = api
     created = client.post("/threads", json={"title": "Greeting"}, **auth("alice")).json()["thread"]

@@ -936,6 +936,7 @@ export function ChatPage({ user, onUserChange, onToast }) {
       ts: String(message?.ts || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })),
       sources: Array.isArray(message?.sources) ? message.sources.map(repairSourceMetadata) : [],
       streaming: Boolean(message?.streaming),
+      interrupted: Boolean(message?.interrupted || message?.action?.interrupted),
       action: message?.action || null,
       activity: null,
     }

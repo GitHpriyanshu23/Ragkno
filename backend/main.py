@@ -1119,7 +1119,7 @@ def handle_query(req: QueryRequest, request: Request):
             "sources": sources,
         }
     except Exception as e:
-        _db.fail_query_request(req.request_id, user_id, str(e))
+        _db.complete_query_exchange(req.request_id, thread_id, user_id, req.query.strip(), "The response failed before it completed.", [], error=str(e))
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -1137,6 +1137,8 @@ def handle_query_stream(req: QueryRequest, request: Request, background_tasks: B
         raise HTTPException(status_code=409, detail="This request is already running.")
 
     def event_generator():
+        answer_parts = []
+        prepared_sources = []
         try:
             if run.get("status") == "complete":
                 cached = _db.decode_query_request(run)
@@ -1189,7 +1191,6 @@ def handle_query_stream(req: QueryRequest, request: Request, background_tasks: B
                 },
             )
 
-            answer_parts = []
             for token in token_iter:
                 text = str(token or "")
                 if not text:
@@ -1220,7 +1221,11 @@ def handle_query_stream(req: QueryRequest, request: Request, background_tasks: B
                 },
             )
         except Exception as e:
-            _db.fail_query_request(req.request_id, user_id, str(e))
+            _db.complete_query_exchange(
+                req.request_id, thread_id, user_id, req.query.strip(),
+                "".join(answer_parts).strip() or "The response failed before it completed.",
+                prepared_sources, error=str(e),
+            )
             yield _sse_event("error", {"request_id": req.request_id, "message": str(e), "interrupted": True})
 
     return StreamingResponse(
