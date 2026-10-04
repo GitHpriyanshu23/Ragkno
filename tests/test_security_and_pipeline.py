@@ -253,7 +253,11 @@ def test_agentrouter_nonstream_calls_share_the_compatible_parser(monkeypatch):
     assert response.content == "Summary complete"
 
 
-def test_agentrouter_timeout_falls_back_before_any_token(monkeypatch):
+@pytest.mark.parametrize("failure", [
+    "AgentRouter timed out while waiting for a response",
+    "empty",
+])
+def test_agentrouter_timeout_falls_back_before_any_token(monkeypatch, failure):
     from src.search import RAGSearch
 
     rag = RAGSearch.__new__(RAGSearch)
@@ -264,7 +268,9 @@ def test_agentrouter_timeout_falls_back_before_any_token(monkeypatch):
 
     def fake_stream(_prompt, model):
         if model == "slow-model":
-            raise RuntimeError("AgentRouter timed out while waiting for a response")
+            if failure == "empty":
+                return
+            raise RuntimeError(failure)
         yield "Fallback answer"
 
     monkeypatch.setattr(rag, "_stream_agentrouter_response", fake_stream)

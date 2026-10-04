@@ -150,12 +150,15 @@ class RAGSearch:
                 "ssl",
                 "handshake",
                 "connection reset",
+                "empty completion stream",
             ]
         )
 
     def _provider_failure_message(self, error: Exception | None, *, streaming: bool) -> str:
         detail = str(error or "").lower()
         action = "stream" if streaming else "request"
+        if "empty completion stream" in detail:
+            return "The AI provider returned no answer after trying the configured models. Please try again."
         if self.provider == "agentrouter":
             if "invalid api key" in detail or "authentication" in detail or "401" in detail:
                 return "AgentRouter authentication failed. Update AGENTROUTER_API_KEY with an active key."
