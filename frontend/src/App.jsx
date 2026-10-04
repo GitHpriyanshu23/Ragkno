@@ -1171,6 +1171,8 @@ export function ChatPage({ user, onUserChange, onToast }) {
   const [hoveredSourceMessage, setHoveredSourceMessage] = useState(null)
   const [indexedSources, setIndexedSources] = useState([])
   const [sourcesLoading, setSourcesLoading] = useState(false)
+  const [sourcesUnindexing, setSourcesUnindexing] = useState(false)
+  const sourcesBusy = sourcesLoading || sourcesUnindexing
   const [sourceMenuOpen, setSourceMenuOpen] = useState(false)
   const [sourceModalOpen, setSourceModalOpen] = useState(false)
   const [profileMenuOpen, setProfileMenuOpen] = useState(false)
@@ -1464,20 +1466,28 @@ export function ChatPage({ user, onUserChange, onToast }) {
   }
 
   async function unindexSelectedSources() {
+    if (sourcesBusy) return
     const keys = [...selectedSourceKeys]
     if (keys.length === 0) return
     const confirmed = window.confirm(`Unindex ${keys.length} selected source(s)?`)
     if (!confirmed) return
 
+    setSourcesUnindexing(true)
     try {
       for (const key of keys) {
         await unindexSource(key)
       }
       onToast?.({ type: 'success', message: `Unindexed ${keys.length} source(s).` })
       setSelectedSourceKeys(new Set())
-      await refreshIndexedSources()
     } catch (error) {
       onToast?.({ type: 'error', message: error.message || 'Failed to unindex selected sources.' })
+    } finally {
+      // Refresh even after a partial failure so completed removals are visible.
+      try {
+        await refreshIndexedSources()
+      } finally {
+        setSourcesUnindexing(false)
+      }
     }
   }
 
@@ -2367,7 +2377,7 @@ export function ChatPage({ user, onUserChange, onToast }) {
                       <ChevronDown size={13} className={`source-chevron ${sourceMenuOpen ? 'open' : ''}`} />
                     </button>
                     {sourceMenuOpen && (
-                      <div className="source-dropdown-menu">
+                      <div className="source-dropdown-menu" aria-busy={sourcesBusy}>
                         <div className="source-dropdown-head">
                           <div>
                             <strong>Sources</strong>
@@ -2382,6 +2392,7 @@ export function ChatPage({ user, onUserChange, onToast }) {
                               <button
                                 type="button"
                                 className="source-action-link"
+                                disabled={sourcesUnindexing}
                                 onClick={() => {
                                   if (selectedSourceKeys.size === indexedSources.length) {
                                     setSelectedSourceKeys(new Set())
@@ -2397,10 +2408,11 @@ export function ChatPage({ user, onUserChange, onToast }) {
                               type="button"
                               className="source-refresh-btn"
                               onClick={refreshIndexedSources}
-                              disabled={sourcesLoading}
-                              title="Refresh sources"
+                              disabled={sourcesBusy}
+                              title={sourcesUnindexing ? 'Unindexing sources…' : 'Refresh sources'}
+                              aria-label={sourcesUnindexing ? 'Unindexing sources' : 'Refresh sources'}
                             >
-                              <RefreshCw size={12} className={sourcesLoading ? 'spin' : ''} />
+                              <RefreshCw size={12} className={sourcesBusy ? 'spin' : ''} />
                             </button>
                           </div>
                         </div>
@@ -2416,6 +2428,7 @@ export function ChatPage({ user, onUserChange, onToast }) {
                                 key={source.key}
                                 type="button"
                                 className={`source-option-btn ${isSelected ? 'selected' : ''}`}
+                                disabled={sourcesUnindexing}
                                 onClick={() => toggleSourceSelection(source.key)}
                               >
                                 <span className="source-option-icon">
@@ -2448,9 +2461,9 @@ export function ChatPage({ user, onUserChange, onToast }) {
                             type="button"
                             className="source-footer-btn danger"
                             onClick={unindexSelectedSources}
-                            disabled={selectedSourceKeys.size === 0}
+                            disabled={sourcesBusy || selectedSourceKeys.size === 0}
                           >
-                            <Trash2 size={12} /> Unindex {selectedSourceKeys.size > 0 ? `(${selectedSourceKeys.size})` : ''}
+                            <Trash2 size={12} /> {sourcesUnindexing ? 'Unindexing…' : `Unindex ${selectedSourceKeys.size > 0 ? `(${selectedSourceKeys.size})` : ''}`}
                           </button>
                         </div>
                       </div>
