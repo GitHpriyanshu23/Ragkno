@@ -46,6 +46,35 @@ def test_data_routes_require_authentication(api):
     assert client.post("/query", json={"query": "x", "thread_id": "t", "request_id": "request-1"}).status_code == 401
 
 
+def test_indexed_sources_are_newest_first_across_uploads_and_drive(api, monkeypatch):
+    main, client, auth = api
+    rows = [
+        {"id": "db-new", "source_key": "drive://new", "source_name": "New Drive.pdf", "source_type": "drive"},
+        {"id": "db-middle", "source_key": "middle.pdf", "source_name": "Middle.pdf", "source_type": "upload"},
+        {"id": "db-old", "source_key": "old.pdf", "source_name": "Old.pdf", "source_type": "upload"},
+    ]
+    def db_sources(user_id):
+        assert user_id == "alice"
+        return rows
+    class Store:
+        def get_user_sources(self, user_id):
+            assert user_id == "alice"
+            return [
+                {"source_id": "vector-old", "source_key": "old.pdf", "title": "Old.pdf"},
+                {"source_id": "vector-new", "source_key": "drive://new", "title": "New Drive.pdf", "source_type": "drive"},
+                {"source_id": "legacy", "source_key": "legacy.pdf", "title": "Legacy.pdf"},
+            ]
+    monkeypatch.setattr(main._db, "get_user_sources", db_sources)
+    monkeypatch.setattr(main, "_get_store", lambda: Store())
+    # Reloads must retain this order; database-only and legacy sources remain visible.
+    for _ in range(2):
+        response = client.get("/ingest/sources", **auth("alice"))
+        assert response.status_code == 200
+        assert [source["key"] for source in response.json()["sources"]] == [
+            "vector-new", "db-middle", "vector-old", "legacy",
+        ]
+
+
 def test_avatar_urls_are_profile_specific_and_not_cacheable(api, monkeypatch):
     import io
     import urllib.request

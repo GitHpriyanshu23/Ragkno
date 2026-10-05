@@ -700,6 +700,9 @@ def ingest_sources(request: Request):
 
     db_sources = _db.get_user_sources(user_id)
     chroma_sources = _get_store().get_user_sources(user_id=user_id)
+    # Database rows are newest first; vector-store iteration has no time order.
+    source_order = {str(s.get("source_key") or ""): index for index, s in enumerate(db_sources)}
+    display_order = {}
 
     seen = set()
     seen_display = set()
@@ -709,6 +712,7 @@ def ingest_sources(request: Request):
         source_id = str(s.get("source_id") or "")
         source_key = str(s.get("source_key") or s.get("source") or "")
         if source_id and source_key not in seen:
+            display_order[source_id] = source_order.get(source_key, len(db_sources))
             seen.add(source_key)
             seen_display.add(str(s.get("title") or s.get("source") or source_key).casefold())
             sources.append({
@@ -724,6 +728,7 @@ def ingest_sources(request: Request):
         source_id = str(s.get("id") or "")
         display_name = str(s.get("source_name") or source_key)
         if source_id and source_key not in seen and display_name.casefold() not in seen_display:
+            display_order[source_id] = source_order.get(source_key, len(db_sources))
             seen.add(source_key)
             seen_display.add(display_name.casefold())
             sources.append({
@@ -734,6 +739,7 @@ def ingest_sources(request: Request):
                 "chunk_count": s.get("chunk_count", 0),
             })
 
+    sources.sort(key=lambda source: display_order[source["key"]])
     return {"count": len(sources), "sources": sources}
 
 
