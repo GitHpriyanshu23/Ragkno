@@ -127,7 +127,19 @@ export async function ingestFiles(files, { onProgress, signal } = {}) {
     xhr.onload = () => {
       cleanup()
       let payload
-      try { payload = JSON.parse(xhr.responseText) } catch { reject(new Error('Invalid response from the upload server.')); return }
+      try { payload = JSON.parse(xhr.responseText) } catch {
+        const status = xhr.status
+        let message = `Upload server returned an unexpected response (HTTP ${status}).`
+        if ([408, 504, 524].includes(status)) {
+          message = `Upload/indexing request timed out (HTTP ${status}). The server may still be indexing. Check Data Center before uploading this file again.`
+        } else if (status === 413) {
+          message = 'Upload rejected by the server or proxy: request too large (HTTP 413). Try uploading fewer files at once.'
+        } else if ([500, 502, 503, 520, 521, 522, 523].includes(status)) {
+          message = `Upload backend or proxy failed (HTTP ${status}). Check the backend logs for the cause.`
+        }
+        reject(new Error(message))
+        return
+      }
       if (xhr.status >= 200 && xhr.status < 300) resolve(payload)
       else reject(new Error(typeof payload.detail === 'string' ? payload.detail : payload.detail?.message || `Upload failed (${xhr.status}).`))
     }

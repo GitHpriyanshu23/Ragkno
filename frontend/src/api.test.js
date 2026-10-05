@@ -70,6 +70,22 @@ describe('API client security and streaming', () => {
     } finally { globalThis.XMLHttpRequest = original }
   })
 
+  it.each([
+    [524, 'request timed out (HTTP 524)'],
+    [502, 'backend or proxy failed (HTTP 502)'],
+    [413, 'request too large (HTTP 413)'],
+    [200, 'unexpected response (HTTP 200)'],
+  ])('preserves HTTP %s when the upload response is HTML instead of JSON', async (status, message) => {
+    const xhr = { upload: {}, open: vi.fn(), setRequestHeader: vi.fn(), send: vi.fn(), status, responseText: '<html>Error</html>' }
+    vi.stubGlobal('XMLHttpRequest', class { constructor() { return xhr } })
+    try {
+      const request = ingestFiles([new File(['text'], 'notes.txt')], { onProgress: vi.fn() })
+      xhr.onload()
+      await expect(request).rejects.toThrow(message)
+      expect(xhr.send).toHaveBeenCalledTimes(1)
+    } finally { vi.unstubAllGlobals() }
+  })
+
   it('does not automatically retry non-idempotent queries', async () => {
     fetch.mockResolvedValue(jsonResponse({ detail: 'failed' }, 500))
     await expect(queryRAG('question', { threadId: 'thread-1', requestId: 'request-1' })).rejects.toThrow('failed')
