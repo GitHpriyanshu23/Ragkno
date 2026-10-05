@@ -50,6 +50,26 @@ describe('API client security and streaming', () => {
     expect(headers.get('X-CSRF-Token')).toBe('csrf-alice')
   })
 
+  it('tracks uploaded bytes then indexing while preserving authenticated requests', async () => {
+    fetch.mockResolvedValue(jsonResponse({ csrf_token: 'upload-csrf' }))
+    await getCurrentUser()
+    const xhr = { upload: {}, open: vi.fn(), setRequestHeader: vi.fn(), send: vi.fn(), status: 200, responseText: JSON.stringify({ ok: true, source_count: 1 }) }
+    const original = globalThis.XMLHttpRequest
+    globalThis.XMLHttpRequest = class { constructor() { return xhr } }
+    try {
+      const onProgress = vi.fn()
+      const request = ingestFiles([new File(['text'], 'notes.txt')], { onProgress })
+      expect(xhr.withCredentials).toBe(true)
+      expect(xhr.setRequestHeader).toHaveBeenCalledWith('X-CSRF-Token', 'upload-csrf')
+      xhr.upload.onprogress({ lengthComputable: true, loaded: 88, total: 100 })
+      expect(onProgress).toHaveBeenLastCalledWith({ stage: 'uploading', percent: 88 })
+      xhr.upload.onload()
+      expect(onProgress).toHaveBeenLastCalledWith({ stage: 'indexing', percent: 100 })
+      xhr.onload()
+      await expect(request).resolves.toMatchObject({ source_count: 1 })
+    } finally { globalThis.XMLHttpRequest = original }
+  })
+
   it('does not automatically retry non-idempotent queries', async () => {
     fetch.mockResolvedValue(jsonResponse({ detail: 'failed' }, 500))
     await expect(queryRAG('question', { threadId: 'thread-1', requestId: 'request-1' })).rejects.toThrow('failed')

@@ -110,10 +110,33 @@ export function syncDrive(fileIds = null) {
 
 export function disconnectDrive() { return jsonRequest('/drive/disconnect', { method: 'DELETE' }) }
 
-export async function ingestFiles(files) {
+export async function ingestFiles(files, { onProgress, signal } = {}) {
   const form = new FormData()
   files.forEach((file) => form.append('files', file))
-  const result = await jsonRequest('/ingest/files', { method: 'POST', body: form })
+  const result = onProgress ? await new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+    xhr.open('POST', `${BASE}/ingest/files`)
+    xhr.withCredentials = true
+    if (csrfToken) xhr.setRequestHeader('X-CSRF-Token', csrfToken)
+    const abort = () => xhr.abort()
+    const cleanup = () => signal?.removeEventListener('abort', abort)
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable) onProgress({ stage: 'uploading', percent: Math.round(event.loaded / event.total * 100) })
+    }
+    xhr.upload.onload = () => onProgress({ stage: 'indexing', percent: 100 })
+    xhr.onload = () => {
+      cleanup()
+      let payload
+      try { payload = JSON.parse(xhr.responseText) } catch { reject(new Error('Invalid response from the upload server.')); return }
+      if (xhr.status >= 200 && xhr.status < 300) resolve(payload)
+      else reject(new Error(typeof payload.detail === 'string' ? payload.detail : payload.detail?.message || `Upload failed (${xhr.status}).`))
+    }
+    xhr.onerror = () => { cleanup(); reject(new Error('Upload failed. Check your connection and try again.')) }
+    xhr.onabort = () => { cleanup(); reject(new DOMException('Upload cancelled', 'AbortError')) }
+    signal?.addEventListener('abort', abort, { once: true })
+    if (signal?.aborted) { cleanup(); reject(new DOMException('Upload cancelled', 'AbortError')); return }
+    xhr.send(form)
+  }) : await jsonRequest('/ingest/files', { method: 'POST', body: form })
   if (result.ok === false || result.source_count === 0) {
     const failures = (result.sources || []).filter((source) => source.error)
       .map((source) => `${source.display_name}: ${source.error}`)

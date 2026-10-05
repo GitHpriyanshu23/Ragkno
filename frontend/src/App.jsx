@@ -62,6 +62,7 @@ import {
   API_BASE,
 } from './api.js'
 import FeedbackModal from './components/FeedbackModal.jsx'
+import UploadProgress from './components/UploadProgress.jsx'
 import SettingsModal from './components/SettingsModal.jsx'
 import DotGrid from './components/DotGrid.jsx'
 import brandLogo from './assets/figma-logo-mark.svg'
@@ -365,6 +366,7 @@ function DataPage({ onToast }) {
   const [syncing, setSyncing] = useState(false)
   const [disconnecting, setDisconnecting] = useState(false)
   const [uploading, setUploading] = useState(false)
+  const [uploadProgress, setUploadProgress] = useState(null)
   const [addingUrl, setAddingUrl] = useState(false)
   const [removingKey, setRemovingKey] = useState('')
   const [notice, setNotice] = useState('')
@@ -515,10 +517,12 @@ function DataPage({ onToast }) {
   }
 
   function onUploadPick() {
+    if (uploading) return
     fileInputRef.current?.click()
   }
 
   async function ingestPickedFiles(picked) {
+    if (uploading) return
     const uniqueFiles = picked.filter((file) => !indexedSourceKeys.has(normalizeSourceKey(file.name)))
     if (uniqueFiles.length === 0) {
       setNotice('Selected files are already indexed.')
@@ -526,13 +530,17 @@ function DataPage({ onToast }) {
     }
 
     setUploading(true)
+    setUploadProgress({ name: uniqueFiles.length === 1 ? uniqueFiles[0].name : `${uniqueFiles.length} documents`, size: uniqueFiles.reduce((total, file) => total + file.size, 0), stage: 'uploading', percent: 0 })
     setNotice('')
     try {
-      const result = await ingestFiles(uniqueFiles)
+      const result = await ingestFiles(uniqueFiles, { onProgress: (progress) => setUploadProgress((previous) => ({ ...previous, ...progress })) })
+      const failures = (result.sources || []).filter((source) => source.error)
+      setUploadProgress((previous) => ({ ...previous, stage: failures.length ? 'error' : 'done', percent: 100, error: failures.map((source) => `${source.display_name}: ${source.error}`).join('; ') }))
       await refreshIndexedSources()
       setNotice(result.message || `Indexed ${uniqueFiles.length} uploaded file(s).`)
-      onToast?.({ type: 'success', message: result.message || 'Files indexed.' })
+      onToast?.({ type: failures.length ? 'info' : 'success', message: result.message || 'Files indexed.' })
     } catch (error) {
+      setUploadProgress((previous) => ({ ...previous, stage: 'error', error: error.message }))
       showError(error.message)
     } finally {
       setUploading(false)
@@ -626,17 +634,20 @@ function DataPage({ onToast }) {
           )}
         </article>
 
-        <article className="panel upload-panel" onClick={onUploadPick}>
+        <article className="panel upload-panel" onClick={onUploadPick} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); if (!uploading) void ingestPickedFiles(Array.from(event.dataTransfer.files)) }}>
           <Upload size={40} />
           <h3>Upload PDFs</h3>
           <p>Drag and drop documents or click to browse.</p>
           <small>Supported: PDF, DOCX, TXT (Max 50MB)</small>
-          {uploading && <small><RefreshCw size={12} className="spin" /> Uploading and indexing...</small>}
+          <div className="upload-progress-container" onClick={(event) => event.stopPropagation()}>
+            <UploadProgress upload={uploadProgress} onDismiss={() => setUploadProgress(null)} />
+          </div>
           <input
             ref={fileInputRef}
             type="file"
             accept=".pdf,.docx,.txt"
             multiple
+            disabled={uploading}
             onChange={onUploadChange}
             hidden
           />
@@ -1146,6 +1157,7 @@ export function ChatPage({ user, onUserChange, onToast }) {
   const [selectedSourceKeys, setSelectedSourceKeys] = useState(new Set())
   const [quickUrl, setQuickUrl] = useState('')
   const [quickUploading, setQuickUploading] = useState(false)
+  const [quickUploadProgress, setQuickUploadProgress] = useState(null)
   const [quickAddingUrl, setQuickAddingUrl] = useState(false)
   const quickFileInputRef = useRef(null)
   const bottomRef = useRef(null)
@@ -1455,15 +1467,19 @@ export function ChatPage({ user, onUserChange, onToast }) {
   }
 
   async function quickUploadFiles(files) {
+    if (quickUploading) return
     const picked = Array.from(files || [])
     if (picked.length === 0) return
     setQuickUploading(true)
+    setQuickUploadProgress({ name: picked.length === 1 ? picked[0].name : `${picked.length} documents`, size: picked.reduce((total, file) => total + file.size, 0), stage: 'uploading', percent: 0 })
     try {
-      const result = await ingestFiles(picked)
-      onToast?.({ type: 'success', message: result.message || 'Files indexed.' })
+      const result = await ingestFiles(picked, { onProgress: (progress) => setQuickUploadProgress((previous) => ({ ...previous, ...progress })) })
+      const failures = (result.sources || []).filter((source) => source.error)
+      setQuickUploadProgress((previous) => ({ ...previous, stage: failures.length ? 'error' : 'done', percent: 100, error: failures.map((source) => `${source.display_name}: ${source.error}`).join('; ') }))
+      onToast?.({ type: failures.length ? 'info' : 'success', message: result.message || 'Files indexed.' })
       await refreshIndexedSources()
-      setSourceModalOpen(false)
     } catch (error) {
+      setQuickUploadProgress((previous) => ({ ...previous, stage: 'error', error: error.message }))
       onToast?.({ type: 'error', message: error.message || 'Upload failed.' })
     } finally {
       setQuickUploading(false)
@@ -2466,9 +2482,9 @@ export function ChatPage({ user, onUserChange, onToast }) {
             </header>
 
             <div className="source-modal-grid">
-              <button className="source-modal-card" type="button" onClick={() => quickFileInputRef.current?.click()}>
+              <button className="source-modal-card" type="button" disabled={quickUploading} onClick={() => quickFileInputRef.current?.click()}>
                 <Upload size={24} />
-                <strong>{quickUploading ? 'Uploading...' : 'Upload files'}</strong>
+                <strong>{quickUploading ? quickUploadProgress?.stage === 'indexing' ? 'Indexing…' : 'Uploading…' : 'Upload files'}</strong>
                 <span>PDF, DOCX, and TXT documents.</span>
               </button>
               <button className="source-modal-card" type="button" onClick={() => navigate('/chat/data')}>
@@ -2477,6 +2493,8 @@ export function ChatPage({ user, onUserChange, onToast }) {
                 <span>Open Data Center for Google Drive sync.</span>
               </button>
             </div>
+
+            <UploadProgress upload={quickUploadProgress} onDismiss={() => setQuickUploadProgress(null)} />
 
             <div className="source-url-row">
               <input
