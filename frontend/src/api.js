@@ -348,3 +348,15 @@ export function submitFeedback({ rating, comment, feedback }) {
 }
 
 export function fetchFeedbacks(limit = 50) { return jsonRequest(`/feedback?limit=${limit}`) }
+
+export function rateResponse(threadId, messageId, rating) {
+  return jsonRequest(`/threads/${encodeURIComponent(threadId)}/messages/${encodeURIComponent(messageId)}/rating`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rating }),
+  })
+}
+
+export function saveIndexGuidance(threadId, query) {
+  return jsonRequest(`/threads/${encodeURIComponent(threadId)}/guidance`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ query }),
+  })
+}

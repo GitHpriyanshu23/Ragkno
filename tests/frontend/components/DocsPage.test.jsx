@@ -2,7 +2,7 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import DocsPage from './DocsPage.jsx'
+import DocsPage from '../../../frontend/src/components/DocsPage.jsx'
 
 describe('documentation page', () => {
   afterEach(() => vi.unstubAllGlobals())

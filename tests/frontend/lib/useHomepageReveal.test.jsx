@@ -2,7 +2,7 @@
 import { useRef } from 'react'
 import { render } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import useHomepageReveal from './useHomepageReveal.js'
+import useHomepageReveal from '../../../frontend/src/lib/useHomepageReveal.js'
 
 function Fixture() {
   const rootRef = useRef(null)

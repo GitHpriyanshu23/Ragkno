@@ -3932,3 +3932,11 @@
     animation: none !important;
   }
 }
+
+.response-actions { display: flex; align-items: center; gap: 4px; margin: 8px 0 4px; color: #a8a29e; }
+.response-actions button { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; padding: 0; border: 0; border-radius: 7px; background: transparent; color: inherit; cursor: pointer; }
+.response-actions button:hover, .response-actions button[aria-pressed="true"] { background: #262626; color: #f5f5f5; }
+.response-actions button[aria-pressed="true"] svg { fill: currentColor; fill-opacity: .2; }
+.response-actions button:focus-visible { outline: 2px solid #8ab4ff; outline-offset: 2px; }
+.response-actions button:disabled { opacity: .45; cursor: default; }
+.response-actions > span { font-size: .75rem; }

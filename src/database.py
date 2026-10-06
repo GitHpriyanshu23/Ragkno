@@ -149,6 +149,17 @@ class Database:
             );
             """,
             f"""
+            CREATE TABLE IF NOT EXISTS response_feedback (
+                user_id TEXT NOT NULL,
+                thread_id TEXT NOT NULL,
+                message_id TEXT NOT NULL,
+                rating TEXT NOT NULL CHECK (rating IN ('like', 'dislike')),
+                created_at {ts_def},
+                updated_at {ts_def},
+                PRIMARY KEY (user_id, message_id)
+            );
+            """,
+            f"""
             CREATE TABLE IF NOT EXISTS feedbacks (
                 id TEXT PRIMARY KEY,
                 user_id TEXT,
@@ -390,6 +401,7 @@ class Database:
 
     def delete_thread(self, thread_id: str, user_id: str) -> bool:
         with self.engine.begin() as conn:
+            conn.execute(text("DELETE FROM response_feedback WHERE thread_id = :id AND user_id = :user_id"), {"id": thread_id, "user_id": user_id})
             conn.execute(
                 text("DELETE FROM messages WHERE thread_id = :id AND user_id = :user_id"),
                 {"id": thread_id, "user_id": user_id},
@@ -414,7 +426,7 @@ class Database:
     def get_thread_messages(self, thread_id: str, user_id: Optional[str] = None) -> List[Dict[str, Any]]:
         if not user_id:
             raise ValueError("user_id is required to read thread messages")
-        sql = "SELECT id, thread_id, user_id, role, text, sources_json, action_json, created_at FROM messages WHERE thread_id = :thread_id"
+        sql = "SELECT id, thread_id, user_id, role, text, sources_json, action_json, created_at, (SELECT rating FROM response_feedback r WHERE r.message_id = messages.id AND r.user_id = messages.user_id) AS rating FROM messages WHERE thread_id = :thread_id"
         params: Dict[str, Any] = {"thread_id": thread_id}
         if user_id:
             sql += " AND user_id = :user_id"
@@ -447,6 +459,7 @@ class Database:
                     "sources": sources,
                     "action": action,
                     "createdAt": item.get("created_at"),
+                    "rating": item.get("rating"),
                 })
             return messages
 
@@ -525,10 +538,11 @@ class Database:
         assistant_text: str,
         sources: Optional[List[Any]] = None,
         error: Optional[str] = None,
+        action: Optional[Dict[str, Any]] = None,
     ) -> None:
         """Save a successful or interrupted exchange with its request status."""
         sources_json = json.dumps(sources or [], ensure_ascii=False)
-        action_json = json.dumps({"interrupted": True}) if error is not None else None
+        action_json = json.dumps({"interrupted": True}) if error is not None else json.dumps(action) if action else None
         with self.engine.begin() as conn:
             thread = conn.execute(
                 text("SELECT id, title FROM threads WHERE id = :id AND user_id = :user_id"),
@@ -1006,3 +1020,23 @@ class Database:
                     "created_at": r[4].isoformat() if hasattr(r[4], "isoformat") else str(r[4]),
                 })
             return results
+
+    def set_response_rating(self, user_id: str, thread_id: str, message_id: str, rating: Optional[str]):
+        if rating not in {None, "like", "dislike"}:
+            raise ValueError("Invalid response rating")
+        params = {"user_id": user_id, "thread_id": thread_id, "message_id": message_id, "rating": rating}
+        with self.engine.begin() as conn:
+            # Check ownership and response role in the same transaction as the vote.
+            message = conn.execute(text("SELECT id FROM messages WHERE id = :message_id AND thread_id = :thread_id AND user_id = :user_id AND role = 'assistant'"), params).first()
+            if not message:
+                raise PermissionError("Response not found")
+            if rating is None:
+                conn.execute(text("DELETE FROM response_feedback WHERE user_id = :user_id AND message_id = :message_id"), params)
+            else:
+                conn.execute(text("""
+                    INSERT INTO response_feedback (user_id, thread_id, message_id, rating)
+                    VALUES (:user_id, :thread_id, :message_id, :rating)
+                    ON CONFLICT (user_id, message_id) DO UPDATE
+                    SET rating = excluded.rating, updated_at = CURRENT_TIMESTAMP
+                """), params)
+        return {"message_id": message_id, "rating": rating}

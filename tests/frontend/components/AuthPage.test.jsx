@@ -2,9 +2,9 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
-import AuthPage from './AuthPage.jsx'
+import AuthPage from '../../../frontend/src/components/AuthPage.jsx'
 
-vi.mock('../api.js', () => ({
+vi.mock('../../../frontend/src/api.js', () => ({
   getCurrentUser: vi.fn().mockResolvedValue({ authenticated: false }),
   getGoogleLoginUrl: vi.fn().mockResolvedValue({ url: 'https://example.test/oauth' }),
   loginWithPassword: vi.fn(),

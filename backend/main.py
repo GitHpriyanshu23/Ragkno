@@ -17,6 +17,7 @@ import secrets
 import threading
 import re
 from collections import defaultdict, deque
+from typing import Literal
 from pathlib import Path
 from urllib.parse import quote
 
@@ -1343,6 +1344,37 @@ def handle_query_stream(req: QueryRequest, request: Request, background_tasks: B
 class FeedbackRequest(BaseModel):
     rating: str | None = "neutral"
     feedback: str
+
+
+class ResponseRatingRequest(BaseModel):
+    rating: Literal["like", "dislike"] | None = None
+
+
+class GuidanceRequest(BaseModel):
+    query: str = Field(min_length=1, max_length=8000)
+
+
+@app.post("/threads/{thread_id}/guidance", summary="Save the index-documents guidance response")
+def save_index_guidance(thread_id: str, payload: GuidanceRequest, request: Request):
+    user = _require_user(request, mutation=True)
+    if not _db.get_thread(thread_id, user["id"]):
+        raise HTTPException(status_code=404, detail="Thread not found.")
+    first_name = str(user.get("name") or "there").split(" ")[0]
+    answer = f"Hi {first_name}, I can answer from your documents once your knowledge base has data. Please index a file, Drive document, or URL first."
+    # Use the existing atomic exchange save so both messages share one transaction.
+    request_id = uuid.uuid4().hex
+    _db.begin_query_request(request_id, user["id"], thread_id, hashlib.sha256(payload.query.encode()).hexdigest())
+    _db.complete_query_exchange(request_id, thread_id, user["id"], payload.query, answer, [], action={"label": "Open Data Center", "to": "/chat/data"})
+    return {"request_id": request_id, "answer": answer}
+
+
+@app.put("/threads/{thread_id}/messages/{message_id}/rating", summary="Rate an assistant response")
+def rate_response(thread_id: str, message_id: str, payload: ResponseRatingRequest, request: Request):
+    user = _require_user(request, mutation=True)
+    try:
+        return _db.set_response_rating(user["id"], thread_id, message_id, payload.rating)
+    except PermissionError:
+        raise HTTPException(status_code=404, detail="Response not found.")
 
 
 @app.post("/feedback", summary="Submit user feedback")

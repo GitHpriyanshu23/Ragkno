@@ -4,6 +4,12 @@ import react from '@vitejs/plugin-react'
 
 export default defineConfig({
   plugins: [react()],
+  test: {
+    root: path.resolve(import.meta.dirname, '..'),
+    alias: Object.fromEntries(['react', 'react-dom', 'react-router-dom', '@testing-library/react'].map((name) => [name, path.resolve(import.meta.dirname, 'node_modules', name)])),
+    include: ['tests/frontend/**/*.test.{js,jsx,ts,tsx}'],
+    css: { include: /headings\.css/ },
+  },
   resolve: {
     alias: {
       '@': path.resolve(import.meta.dirname, './src'),

@@ -1,0 +1,14 @@
+---
+description: Keep all project tests centralized under the repository tests directory
+alwaysApply: true
+---
+
+# Test organization
+
+- Put all project-owned test files under the root `tests/` directory.
+- Python backend tests belong in `tests/backend/`.
+- Frontend Vitest tests belong in `tests/frontend/`; mirror component/lib folders when useful.
+- Keep shared fixtures and test support under `tests/`.
+- Do not add tests beside production code in `frontend/src/`, `backend/`, or `src/`.
+- Update imports and runner configuration when moving tests.
+- Run backend tests from the repository root with `uv run pytest -q` and frontend tests from `frontend/` with `npm test`.

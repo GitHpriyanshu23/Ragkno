@@ -2,7 +2,7 @@
 import React from 'react'
 import { render, screen, cleanup } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
-import UploadProgress from './UploadProgress.jsx'
+import UploadProgress from '../../../frontend/src/components/UploadProgress.jsx'
 
 afterEach(cleanup)
 describe('Upload progress', () => {

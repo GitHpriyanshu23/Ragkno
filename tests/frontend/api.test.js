@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { clearApiSession, getCurrentUser, ingestFiles, ingestUrl, loginWithPassword, queryRAG, queryRAGStream, registerUser } from './api.js'
+import { clearApiSession, getCurrentUser, ingestFiles, ingestUrl, loginWithPassword, queryRAG, queryRAGStream, registerUser } from '../../frontend/src/api.js'
 
 function jsonResponse(payload, status = 200) {
   return new Response(JSON.stringify(payload), { status, headers: { 'Content-Type': 'application/json' } })

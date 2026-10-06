@@ -1,3 +1,4 @@
+import ResponseActions from './components/ResponseActions.jsx'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { BrowserRouter, Link, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import Lenis from 'lenis'
@@ -56,6 +57,8 @@ import {
   syncDrive,
   unindexSource,
   submitFeedback,
+  rateResponse,
+  saveIndexGuidance,
   getThreads,
   getThreadMessages,
   createBackendThread,
@@ -940,6 +943,8 @@ export function ChatPage({ user, onUserChange, onToast }) {
     return {
       id: message?.id || makeMessageId(`legacy-${index}`),
       role,
+      rating: message?.rating || null,
+      requestId: message?.requestId || null,
       text: String(message?.text || ''),
       ts: String(message?.ts || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })),
       sources: Array.isArray(message?.sources) ? message.sources.map(repairSourceMetadata) : [],
@@ -1437,7 +1442,7 @@ export function ChatPage({ user, onUserChange, onToast }) {
     return <FileText size={13} />
   }
 
-  function addGuidedIndexMessage(userText, threadId) {
+  async function addGuidedIndexMessage(userText, threadId) {
     if (!threadId) return
     const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     const userMessage = {
@@ -1456,6 +1461,14 @@ export function ChatPage({ user, onUserChange, onToast }) {
       sources: [],
       streaming: false,
       action: { label: 'Open Data Center', to: '/chat/data' },
+    }
+    try {
+      const saved = await saveIndexGuidance(threadId, userText)
+      userMessage.id = `${saved.request_id}:user`
+      assistantMessage.id = `${saved.request_id}:assistant`
+      assistantMessage.text = saved.answer
+    } catch (error) {
+      onToast?.({ type: 'error', message: error.message || 'Could not save this response.' })
     }
     updateThreadById(threadId, (thread) => ({
       ...thread,
@@ -1636,7 +1649,9 @@ export function ChatPage({ user, onUserChange, onToast }) {
     const greetingOnly = isSimpleGreeting(text)
 
     if (!greetingOnly && indexedSources.length === 0) {
-      addGuidedIndexMessage(text, targetThreadId)
+      setLoading(true)
+      try { await addGuidedIndexMessage(text, targetThreadId) }
+      finally { setLoading(false) }
       setInput('')
       setError('')
       return
@@ -2333,6 +2348,20 @@ export function ChatPage({ user, onUserChange, onToast }) {
                         <span className="response-interrupted" role="status">Response interrupted</span>
                       )}
                     </div>
+
+                    {message.role === 'assistant' && !message.streaming && message.text && (
+                      <ResponseActions
+                        text={message.text}
+                        rating={message.rating}
+                        canRate={Boolean(message.requestId || message.id.endsWith(':assistant') || message.id.startsWith('msg_'))}
+                        onRate={async (rating) => {
+                          const savedId = message.requestId ? `${message.requestId}:assistant` : message.id
+                          const result = await rateResponse(activeThreadId, savedId, rating)
+                          updateMessageById(message.id, (previous) => ({ ...previous, rating: result.rating }))
+                        }}
+                        onError={(text) => onToast?.({ type: 'error', message: text })}
+                      />
+                    )}
 
                     <span>{message.role === 'user' ? message.ts : `Ragkno • ${message.ts}`}</span>
                   </div>

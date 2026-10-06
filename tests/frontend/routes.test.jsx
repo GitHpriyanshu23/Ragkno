@@ -2,10 +2,9 @@
 import { describe, expect, it, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
-import { readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
-import LegalPage from './components/LegalPage.jsx'
-import ChatErrorBoundary from './components/ChatErrorBoundary.jsx'
+import headingsCss from '../../frontend/src/styles/headings.css?raw'
+import LegalPage from '../../frontend/src/components/LegalPage.jsx'
+import ChatErrorBoundary from '../../frontend/src/components/ChatErrorBoundary.jsx'
 
 describe('route recovery and legal surfaces', () => {
   it('keeps the chat route recoverable instead of blank on a rendering failure', () => {
@@ -25,7 +24,7 @@ describe('route recovery and legal surfaces', () => {
   })
 
   it('uses Times New Roman only for primary homepage headings', () => {
-    const css = readFileSync(resolve(process.cwd(), 'src/styles/headings.css'), 'utf8')
+    const css = headingsCss
     expect(css).toContain('--heading-font:"Times New Roman",Times,serif')
     expect(css).toContain('.hero-section h1')
     expect(css).toContain('.faq-root-section .faq-headline')

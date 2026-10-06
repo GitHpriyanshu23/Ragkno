@@ -643,7 +643,7 @@ def test_docx_fixture_and_blank_files():
     from pathlib import Path
     from src.ingest import load_uploaded_file
 
-    fixture = Path(__file__).parent / "fixtures" / "sample.docx"
+    fixture = Path(__file__).parent.parent / "fixtures" / "sample.docx"
     docs = load_uploaded_file("Sample.DOCX", fixture.read_bytes())
     assert docs
     assert "DOCX extraction fixture" in docs[0].page_content
@@ -792,3 +792,40 @@ def test_fast_chunking_reuses_model_and_only_embeds_final_chunks(monkeypatch):
     assert embeddings.shape == (len(chunks), 4)
     assert sum(model.calls) == len(chunks)
     assert progress[-1] == 80
+
+
+def test_response_ratings_persist_switch_clear_and_check_ownership(api):
+    main, client, auth = api
+    thread = main._db.create_thread('alice')
+    tid = thread['id']
+    response = main._db.append_message(tid, 'alice', 'assistant', 'Answer with a citation [1].')
+    user_message = main._db.append_message(tid, 'alice', 'user', 'Question')
+    endpoint = f"/threads/{tid}/messages/{response['id']}/rating"
+    assert client.put(endpoint, json={'rating': 'like'}, **auth('bob')).status_code == 404
+    assert client.put(endpoint, json={'rating': 'invalid'}, **auth('alice')).status_code == 422
+    assert client.put(f"/threads/{tid}/messages/{user_message['id']}/rating", json={'rating': 'like'}, **auth('alice')).status_code == 404
+    for rating in ('like', 'dislike', None):
+        result = client.put(endpoint, json={'rating': rating}, **auth('alice'))
+        assert result.status_code == 200
+        messages = client.get(f'/threads/{tid}/messages', **auth('alice')).json()['messages']
+        assert next(m for m in messages if m['id'] == response['id'])['rating'] == rating
+    client.put(endpoint, json={'rating': 'like'}, **auth('alice'))
+    assert main._db.delete_thread(tid, 'alice')
+    from sqlalchemy import text
+    with main._db.engine.connect() as conn:
+        assert conn.execute(text('SELECT COUNT(*) FROM response_feedback WHERE thread_id = :id'), {'id': tid}).scalar() == 0
+
+
+def test_guidance_response_is_saved_and_can_be_rated(api):
+    main, client, auth = api
+    thread = main._db.create_thread('alice')
+    tid = thread['id']
+    assert client.post(f'/threads/{tid}/guidance', json={'query': 'Help'}, **auth('bob')).status_code == 404
+    result = client.post(f'/threads/{tid}/guidance', json={'query': 'Help'}, **auth('alice'))
+    assert result.status_code == 200
+    mid = result.json()['request_id'] + ':assistant'
+    messages = main._db.get_thread_messages(tid, 'alice')
+    assert len(messages) == 2
+    answer = next(m for m in messages if m['id'] == mid)
+    assert answer['action']['to'] == '/chat/data'
+    assert client.put(f'/threads/{tid}/messages/{mid}/rating', json={'rating': 'like'}, **auth('alice')).status_code == 200

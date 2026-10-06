@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, expect, it } from 'vitest'
-import UserAvatar from './UserAvatar.jsx'
+import UserAvatar from '../../../frontend/src/components/UserAvatar.jsx'
 
 afterEach(cleanup)
 const alice = { id: 'alice', name: 'Alice', picture: 'https://lh3.googleusercontent.com/alice', avatar_url: '/auth/avatar' }

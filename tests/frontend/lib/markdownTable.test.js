@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseMarkdownTable } from './markdownTable.js'
+import { parseMarkdownTable } from '../../../frontend/src/lib/markdownTable.js'
 
 describe('Markdown table parsing', () => {
   it('parses financial tables and column alignment', () => {
