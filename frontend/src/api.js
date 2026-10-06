@@ -4,7 +4,7 @@ const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS'])
 let csrfToken = ''
 
 function sleep(ms) {
-  return new Promise((resolve) => window.setTimeout(resolve, ms))
+  return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
 async function parseError(response, fallback) {
@@ -38,7 +38,9 @@ async function apiFetch(path, options = {}, config = {}) {
         await sleep(300 * (2 ** attempt))
         continue
       }
-      throw new Error(await parseError(response, `Request failed (${response.status})`))
+      const error = new Error(await parseError(response, `Request failed (${response.status})`))
+      error.status = response.status
+      throw error
     } catch (error) {
       lastError = error
       if (error?.name === 'AbortError' || attempt >= retries) throw error
@@ -100,12 +102,13 @@ export function getAuthUrl() { return jsonRequest('/auth/url') }
 export function getAuthStatus() { return jsonRequest('/auth/status') }
 export function getDriveFiles() { return jsonRequest('/drive/files') }
 
-export function syncDrive(fileIds = null) {
-  return jsonRequest('/drive/sync', {
+export async function syncDrive(fileIds = null, options = {}) {
+  const job = await jsonRequest('/ingest/jobs/drive', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ file_ids: fileIds }),
   })
+  return watchIngestionJob(job.job_id, options)
 }
 
 export function disconnectDrive() { return jsonRequest('/drive/disconnect', { method: 'DELETE' }) }
@@ -113,9 +116,9 @@ export function disconnectDrive() { return jsonRequest('/drive/disconnect', { me
 export async function ingestFiles(files, { onProgress, signal } = {}) {
   const form = new FormData()
   files.forEach((file) => form.append('files', file))
-  const result = onProgress ? await new Promise((resolve, reject) => {
+  let result = onProgress ? await new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest()
-    xhr.open('POST', `${BASE}/ingest/files`)
+    xhr.open('POST', `${BASE}/ingest/jobs/files`)
     xhr.withCredentials = true
     if (csrfToken) xhr.setRequestHeader('X-CSRF-Token', csrfToken)
     const abort = () => xhr.abort()
@@ -123,7 +126,7 @@ export async function ingestFiles(files, { onProgress, signal } = {}) {
     xhr.upload.onprogress = (event) => {
       if (event.lengthComputable) onProgress({ stage: 'uploading', percent: Math.round(event.loaded / event.total * 100) })
     }
-    xhr.upload.onload = () => onProgress({ stage: 'indexing', percent: 100 })
+    xhr.upload.onload = () => onProgress({ stage: 'indexing', phase: 'Waiting to index', percent: 0 })
     xhr.onload = () => {
       cleanup()
       let payload
@@ -148,13 +151,47 @@ export async function ingestFiles(files, { onProgress, signal } = {}) {
     signal?.addEventListener('abort', abort, { once: true })
     if (signal?.aborted) { cleanup(); reject(new DOMException('Upload cancelled', 'AbortError')); return }
     xhr.send(form)
-  }) : await jsonRequest('/ingest/files', { method: 'POST', body: form })
+  }) : await jsonRequest('/ingest/jobs/files', { method: 'POST', body: form, signal })
+  if (result.job_id) result = await watchIngestionJob(result.job_id, { onProgress, signal })
   if (result.ok === false || result.source_count === 0) {
     const failures = (result.sources || []).filter((source) => source.error)
       .map((source) => `${source.display_name}: ${source.error}`)
     throw new Error(failures.join('; ') || result.message || 'No files were indexed.')
   }
   return result
+}
+
+export function getActiveIngestionJobs() { return jsonRequest('/ingest/jobs') }
+
+export async function watchIngestionJob(jobId, { onProgress, signal } = {}) {
+  // Short status requests replace the one long request through the proxy.
+  // A temporary loss of connectivity does not turn server-side work into a failure.
+  while (!signal?.aborted) {
+    const controller = new AbortController()
+    const abort = () => controller.abort()
+    signal?.addEventListener('abort', abort, { once: true })
+    const timer = setTimeout(abort, 15000)
+    let job
+    try {
+      job = await jsonRequest(`/ingest/jobs/${encodeURIComponent(jobId)}`, { signal: controller.signal })
+    } catch (error) {
+      if (signal?.aborted || [401, 403, 404].includes(error.status)) throw error
+      onProgress?.({ stage: 'indexing', phase: 'Reconnecting to indexing progress…' })
+    } finally {
+      clearTimeout(timer)
+      signal?.removeEventListener('abort', abort)
+    }
+    if (job) {
+      onProgress?.({ stage: 'indexing', phase: job.phase, percent: job.percent, jobId })
+      if (job.status === 'completed') return job.result
+      if (job.status === 'failed') {
+        const failures = (job.result?.sources || []).filter((source) => source.error)
+        throw new Error(job.error || failures.map((source) => `${source.display_name}: ${source.error}`).join('; ') || job.result?.message || 'Indexing failed.')
+      }
+    }
+    await sleep(2000)
+  }
+  throw new DOMException('Stopped watching indexing; server processing continues.', 'AbortError')
 }
 
 export function ingestUrl(url) {

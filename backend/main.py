@@ -167,8 +167,9 @@ _LOGIN_ATTEMPT_LIMIT = 8
 
 def _get_store() -> ChromaVectorStore:
     global _store_instance
-    if _store_instance is None:
-        _store_instance = ChromaVectorStore(persist_dir=STORE_DIR)
+    with _runtime_lock:
+        if _store_instance is None:
+            _store_instance = ChromaVectorStore(persist_dir=STORE_DIR)
     return _store_instance
 
 
@@ -773,8 +774,13 @@ def ingest_unindex(req: UnindexRequest, request: Request):
 @app.post("/drive/sync", summary="Ingest selected Drive files into Chroma vector store")
 def drive_sync(request: Request, req: DriveSyncRequest | None = None):
     user = _require_user(request, mutation=True)
-    user_id = user["id"]
+    return _index_drive(user, req)
 
+
+def _index_drive(user, req, progress=None):
+    user_id = user["id"]
+    if progress:
+        progress("Downloading selected Drive documents", 3)
     creds = load_credentials(user_id)
     if not creds:
         raise HTTPException(status_code=401, detail="Not connected to Google Drive.")
@@ -790,7 +796,7 @@ def drive_sync(request: Request, req: DriveSyncRequest | None = None):
             return {"message": "No supported documents found in Drive.", "count": 0}
 
         store = _get_store()
-        indexed = store.add_documents(docs, user_id=user_id)
+        indexed = store.add_documents(docs, user_id=user_id, progress=progress)
         for item in indexed:
             _db.record_user_source(user_id, source_key=item["source_key"], source_name=item["source_name"], source_type="drive", chunk_count=item["chunk_count"])
         _invalidate_retrieval_cache()
@@ -821,6 +827,10 @@ def ingest_files(request: Request, files: list[UploadFile] = File(...)):
     # Parsing and embedding are blocking work. A synchronous route runs in
     # FastAPI's worker pool so uploads cannot stall session and health requests.
     user = _require_user(request, mutation=True)
+    return _index_uploaded_files(user, files)
+
+
+def _index_uploaded_files(user, files, progress=None):
     if not files:
         raise HTTPException(status_code=400, detail="No files provided.")
 
@@ -874,8 +884,10 @@ def ingest_files(request: Request, files: list[UploadFile] = File(...)):
 
         user_id = user["id"]
 
+        if progress:
+            progress("Loading document index", 8)
         store = _get_store()
-        indexed = store.add_documents(documents, user_id=user_id)
+        indexed = store.add_documents(documents, user_id=user_id, progress=progress)
         for item in indexed:
             _db.record_user_source(user_id, source_key=item["source_key"], source_name=item["source_name"], source_type="upload", chunk_count=item["chunk_count"])
         _invalidate_retrieval_cache()
@@ -903,6 +915,83 @@ def ingest_files(request: Request, files: list[UploadFile] = File(...)):
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+from src.ingestion_jobs import IngestionJobs
+
+
+def _process_ingestion_job(job, directory, progress):
+    from contextlib import ExitStack
+    if job["kind"] == "drive":
+        return _index_drive({"id": job["user_id"]}, DriveSyncRequest(**job["payload"]), progress=progress)
+    from starlette.datastructures import Headers
+    with ExitStack() as stack:
+        files = [UploadFile(filename=item["name"], headers=Headers({"content-type": item["content_type"]}), file=stack.enter_context((directory / item["file"]).open("rb")))
+                 for item in job["inputs"]]
+        return _index_uploaded_files({"id": job["user_id"]}, files, progress=progress)
+
+
+_ingestion_jobs = IngestionJobs(_DATA_ROOT / "ingestion_jobs", _process_ingestion_job)
+
+
+@app.on_event("startup")
+def resume_ingestion_jobs():
+    _ingestion_jobs.start()
+
+
+@app.on_event("shutdown")
+def stop_ingestion_jobs():
+    _ingestion_jobs.stop()
+
+
+@app.post("/ingest/jobs/files", status_code=202, summary="Accept upload for background indexing")
+def queue_uploaded_files(request: Request, files: list[UploadFile] = File(...)):
+    user = _require_user(request, mutation=True)
+    if not files or len(files) > 20:
+        raise HTTPException(status_code=400, detail="Select between 1 and 20 files.")
+    accepted = []
+    total = 0
+    for file in files:
+        name = (file.filename or "uploaded-file").strip()
+        if Path(name).suffix.lower() not in {".pdf", ".txt", ".docx"}:
+            raise HTTPException(status_code=400, detail=f"Unsupported file: {name}")
+        content = file.file.read(MAX_UPLOAD_BYTES + 1)
+        total += len(content)
+        if not content or len(content) > MAX_UPLOAD_BYTES or total > 100 * 1024 * 1024:
+            raise HTTPException(status_code=400, detail="Files must be non-empty, under 50MB each and 100MB total.")
+        accepted.append((name, file.content_type or "", content))
+    try:
+        return _ingestion_jobs.submit(user["id"], accepted)
+    except ValueError as error:
+        raise HTTPException(status_code=409, detail=str(error))
+
+
+@app.post("/ingest/jobs/drive", status_code=202, summary="Index Drive files in background")
+def queue_drive_sync(request: Request, req: DriveSyncRequest):
+    user = _require_user(request, mutation=True)
+    if not load_credentials(user["id"]):
+        raise HTTPException(status_code=401, detail="Not connected to Google Drive.")
+    try:
+        return _ingestion_jobs.submit(user["id"], kind="drive", payload={"file_ids": req.file_ids})
+    except ValueError as error:
+        raise HTTPException(status_code=409, detail=str(error))
+
+
+@app.get("/ingest/jobs", summary="Get active indexing jobs for the signed-in user")
+def active_ingestion_jobs(request: Request, response: Response):
+    response.headers["Cache-Control"] = "private, no-store"
+    user = _require_user(request)
+    return {"jobs": _ingestion_jobs.active(user["id"])}
+
+
+@app.get("/ingest/jobs/{job_id}", summary="Get indexing progress")
+def ingestion_job_status(job_id: str, request: Request, response: Response):
+    user = _require_user(request)
+    response.headers["Cache-Control"] = "private, no-store"
+    try:
+        return _ingestion_jobs.get(job_id, user["id"])
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Indexing job not found.")
 
 
 @app.post("/ingest/url", summary="Fetch and index one website URL")

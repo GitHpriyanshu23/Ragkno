@@ -12,6 +12,7 @@ from langchain_core.documents import Document
 
 @pytest.fixture()
 def api(tmp_path, monkeypatch):
+    monkeypatch.setenv("RAGKNO_DATA_DIR", str(tmp_path))
     monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path / 'test.sqlite3'}")
     monkeypatch.setenv("RAGKNO_SESSION_SECRET", "test-secret")
     monkeypatch.setenv("FRONTEND_URL", "http://localhost:5173")
@@ -746,3 +747,48 @@ def test_synthetic_ingestion_to_scoped_cited_response(tmp_path, monkeypatch):
     rows = store.get_user_metadata("alice", [source_id])
     assert len(rows) == 1
     assert "eighteen weeks" in rows[0]["text"]
+
+
+def test_background_upload_accepts_before_parsing_finishes(api, monkeypatch):
+    main, client, auth = api
+    started, release = threading.Event(), threading.Event()
+    def parse(*args):
+        started.set()
+        release.wait(3)
+        return []
+    monkeypatch.setattr(main, "load_uploaded_file", parse)
+    try:
+        response = client.post("/ingest/jobs/files", files={"files": ("notes.txt", b"notes", "text/plain")}, **auth("alice"))
+        assert response.status_code == 202
+        assert started.wait(2)
+        job_id = response.json()["job_id"]
+        assert client.get(f"/ingest/jobs/{job_id}", **auth("alice")).json()["status"] == "running"
+        assert client.get(f"/ingest/jobs/{job_id}", **auth("bob")).status_code == 404
+        assert client.get("/auth/me", **auth("alice")).status_code == 200
+    finally:
+        release.set()
+        main._ingestion_jobs.stop()
+
+
+def test_fast_chunking_reuses_model_and_only_embeds_final_chunks(monkeypatch):
+    import numpy as np
+    import src.embedding as module
+    monkeypatch.setenv('RAG_SEMANTIC_CHUNKING', 'false')
+    class Model:
+        def __init__(self):
+            self.calls = []
+        def encode(self, texts, **kwargs):
+            self.calls.append(len(texts))
+            return np.ones((len(texts), 4))
+    model = Model()
+    def forbidden(*args, **kwargs):
+        raise AssertionError('Must reuse the loaded model')
+    monkeypatch.setattr(module, 'SentenceTransformer', forbidden)
+    pipeline = module.EmbeddingPipeline(model=model)
+    chunks = pipeline.chunk_documents([Document(page_content='A sentence about documents. ' * 200)])
+    assert not model.calls, 'Chunking must not run sentence-level inference in the fast path'
+    progress = []
+    embeddings = pipeline.embed_chunks(chunks, progress=lambda phase, percent: progress.append(percent))
+    assert embeddings.shape == (len(chunks), 4)
+    assert sum(model.calls) == len(chunks)
+    assert progress[-1] == 80

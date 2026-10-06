@@ -47,6 +47,8 @@ import {
   getDriveFiles,
   getIndexedSources,
   ingestFiles,
+  getActiveIngestionJobs,
+  watchIngestionJob,
   ingestUrl,
   logoutUser,
   queryRAG,
@@ -389,6 +391,35 @@ function DataPage({ onToast }) {
   }, [])
 
   useEffect(() => {
+    const controller = new AbortController()
+    let resumed = false
+    void (async () => {
+      try {
+        const { jobs } = await getActiveIngestionJobs()
+        if (controller.signal.aborted || !jobs?.length) return
+        const job = jobs[0]
+        resumed = true
+        setUploading(true)
+        setUploadProgress({ name: job.name, size: job.size, stage: 'indexing', phase: job.phase, percent: job.percent })
+        const result = await watchIngestionJob(job.job_id, {
+          signal: controller.signal,
+          onProgress: (progress) => { if (!controller.signal.aborted) setUploadProgress((previous) => ({ ...previous, ...progress })) },
+        })
+        if (!controller.signal.aborted) {
+          const failures = (result.sources || []).filter((source) => source.error)
+          setUploadProgress((previous) => ({ ...previous, stage: failures.length ? 'error' : 'done', percent: 100, error: failures.map((source) => source.error).join('; ') }))
+          await refreshIndexedSources()
+        }
+      } catch (error) {
+        if (!controller.signal.aborted) setUploadProgress((previous) => previous ? { ...previous, stage: 'error', error: error.message } : previous)
+      } finally {
+        if (resumed && !controller.signal.aborted) setUploading(false)
+      }
+    })()
+    return () => controller.abort()
+  }, [])
+
+  useEffect(() => {
     const params = new URLSearchParams(location.search)
     if (params.get('connected') === '1') {
       setNotice('Google Drive connected successfully.')
@@ -473,13 +504,16 @@ function DataPage({ onToast }) {
     }
 
     setSyncing(true)
+    setUploadProgress({ name: unsyncedFiles.length === 1 ? unsyncedFiles[0].name : `${unsyncedFiles.length} Drive documents`, stage: 'indexing', phase: 'Waiting to index', percent: 0 })
     setNotice('')
     try {
-      const result = await syncDrive(unsyncedIds)
+      const result = await syncDrive(unsyncedIds, { onProgress: (progress) => setUploadProgress((previous) => ({ ...previous, ...progress })) })
+      setUploadProgress((previous) => ({ ...previous, stage: 'done', percent: 100 }))
       await refreshIndexedSources()
       setNotice(result.message || 'Sync completed.')
       onToast?.({ type: 'success', message: result.message || 'Sync completed.' })
     } catch (error) {
+      setUploadProgress((previous) => ({ ...previous, stage: 'error', error: error.message }))
       showError(error.message, syncSelected)
     } finally {
       setSyncing(false)

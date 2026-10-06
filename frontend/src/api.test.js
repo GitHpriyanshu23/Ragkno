@@ -64,7 +64,7 @@ describe('API client security and streaming', () => {
       xhr.upload.onprogress({ lengthComputable: true, loaded: 88, total: 100 })
       expect(onProgress).toHaveBeenLastCalledWith({ stage: 'uploading', percent: 88 })
       xhr.upload.onload()
-      expect(onProgress).toHaveBeenLastCalledWith({ stage: 'indexing', percent: 100 })
+      expect(onProgress).toHaveBeenLastCalledWith({ stage: 'indexing', phase: 'Waiting to index', percent: 0 })
       xhr.onload()
       await expect(request).resolves.toMatchObject({ source_count: 1 })
     } finally { globalThis.XMLHttpRequest = original }
@@ -143,4 +143,21 @@ describe('API client security and streaming', () => {
     expect(fetch.mock.calls[1][0]).toBe('/auth/login')
     expect(fetch.mock.calls[1][1]).toMatchObject({ credentials: 'include', method: 'POST' })
   })
+})
+
+it('waits for background indexing instead of treating acceptance as completion', async () => {
+  vi.useFakeTimers()
+  global.fetch = vi.fn()
+    .mockResolvedValueOnce(jsonResponse({ job_id: 'job123' }, 202))
+    .mockResolvedValueOnce(jsonResponse({ status: 'running', phase: 'Creating searchable embeddings', percent: 45 }))
+    .mockResolvedValueOnce(jsonResponse({ status: 'completed', phase: 'Ready', percent: 100, result: { ok: true, source_count: 1 } }))
+  try {
+    const request = ingestFiles([new File(['data'], 'notes.txt')])
+    await vi.advanceTimersByTimeAsync(2100)
+    await expect(request).resolves.toMatchObject({ source_count: 1 })
+    expect(fetch.mock.calls[0][0]).toBe('/ingest/jobs/files')
+    expect(fetch.mock.calls[1][0]).toBe('/ingest/jobs/job123')
+  } finally {
+    vi.useRealTimers()
+  }
 })

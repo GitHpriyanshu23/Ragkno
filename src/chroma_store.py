@@ -93,7 +93,7 @@ class ChromaVectorStore:
     def build_from_documents(self, documents: List[Any], user_id: str):
         return self.add_documents(documents, user_id=user_id)
 
-    def add_documents(self, documents: List[Any], user_id: str) -> List[Dict[str, Any]]:
+    def add_documents(self, documents: List[Any], user_id: str, progress=None) -> List[Dict[str, Any]]:
         uid = str(user_id or "").strip()
         if not uid or uid in {"*", "all", "system", "guest"}:
             raise ValueError("Authenticated user_id is required for ingestion")
@@ -102,11 +102,13 @@ class ChromaVectorStore:
         if self.model is None:
             raise RuntimeError("Embedding model is not loaded")
 
-        pipeline = EmbeddingPipeline(model_name=self.embedding_model, chunk_size=self.chunk_size, chunk_overlap=self.chunk_overlap)
+        pipeline = EmbeddingPipeline(model_name=self.embedding_model, chunk_size=self.chunk_size, chunk_overlap=self.chunk_overlap, model=self.model)
+        if progress:
+            progress("Splitting document text", 10)
         chunks = pipeline.chunk_documents(documents)
         if not chunks:
             return []
-        embeddings = pipeline.embed_chunks(chunks)
+        embeddings = pipeline.embed_chunks(chunks, progress=progress)
         by_source: Dict[str, Dict[str, Any]] = {}
         ids: List[str] = []
         metadatas: List[Dict[str, Any]] = []
@@ -138,6 +140,8 @@ class ChromaVectorStore:
         for start in range(0, len(ids), 500):
             end = min(start + 500, len(ids))
             self.collection.upsert(ids=ids[start:end], documents=texts[start:end], metadatas=metadatas[start:end], embeddings=embeddings[start:end].tolist())
+            if progress:
+                progress("Saving searchable chunks", 80 + 18 * end / len(ids))
         new_ids = set(ids)
         stale = [cid for values in old_by_source.values() for cid in values if cid not in new_ids]
         if stale:

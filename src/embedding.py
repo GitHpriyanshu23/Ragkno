@@ -17,6 +17,7 @@ class EmbeddingPipeline:
         parent_chunk_overlap: int = 250,
         semantic_threshold: float = 0.55,
         semantic_min_chars: int = 350,
+        model=None,
     ):
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
@@ -25,7 +26,7 @@ class EmbeddingPipeline:
         self.semantic_threshold = semantic_threshold
         self.semantic_min_chars = semantic_min_chars
         self.device = os.getenv("RAG_EMBEDDING_DEVICE", "cpu").strip().lower() or "cpu"
-        self.model = SentenceTransformer(model_name, device=self.device)
+        self.model = model if model is not None else SentenceTransformer(model_name, device=self.device)
         print(f"[INFO] Loaded embedding model: {model_name} on {self.device}")
 
     @staticmethod
@@ -101,7 +102,15 @@ class EmbeddingPipeline:
 
             for parent_index, parent_text in enumerate(parent_texts):
                 parent_id = f"{source}::p{page}::d{doc_index}::c{parent_index}"
-                child_texts = self._semantic_child_chunks(parent_text)
+                # Sentence-level inference per parent is expensive on small CPU servers.
+                # Keep parent/child retrieval, using overlapping text splits by default.
+                if os.getenv("RAG_SEMANTIC_CHUNKING", "false").lower() == "true":
+                    child_texts = self._semantic_child_chunks(parent_text)
+                else:
+                    child_texts = RecursiveCharacterTextSplitter(
+                        chunk_size=self.chunk_size, chunk_overlap=self.chunk_overlap,
+                        separators=["\n\n", "\n", ". ", " ", ""],
+                    ).split_text(parent_text)
                 for child_index, child_text in enumerate(child_texts):
                     metadata = dict(base_metadata)
                     metadata.update(
@@ -117,9 +126,13 @@ class EmbeddingPipeline:
         print(f"[INFO] Split {len(documents)} documents into {len(chunks)} chunks")
         return chunks
     
-    def embed_chunks(self, chunks: List[Any]) -> np.ndarray:
+    def embed_chunks(self, chunks: List[Any], progress=None) -> np.ndarray:
         texts = [chunk.page_content for chunk in chunks]
-        print(f"[INFO] GEnerating embeddings for {len(texts)} chunks")
-        embeddings = self.model.encode(texts, show_progress_bar=True, device=self.device)
-        print(f"[INFO] Embeddigns shape : {embeddings.shape}")
-        return embeddings
+        batch_size = max(1, min(128, int(os.getenv("RAG_EMBEDDING_BATCH_SIZE", "32"))))
+        batches = []
+        for start in range(0, len(texts), batch_size):
+            batches.append(self.model.encode(texts[start:start + batch_size], device=self.device,
+                                             batch_size=batch_size, show_progress_bar=False))
+            if progress:
+                progress("Creating searchable embeddings", 15 + 65 * min(start + batch_size, len(texts)) / len(texts))
+        return np.concatenate(batches, axis=0)

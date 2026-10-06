@@ -93,7 +93,7 @@
 .upload-progress-fill { height: 100%; background: #0754f8; border-radius: inherit; transition: width .2s ease; }
 .upload-progress-value { font-size: .75rem; color: #7c8290; min-width: 38px; text-align: right; }
 .upload-progress-dismiss { align-self: flex-start; border: 0; background: transparent; padding: 0; color: #222; cursor: pointer; }
-.is-indexing .upload-progress-fill { width: 40% !important; animation: document-indexing 1.5s ease-in-out infinite; }
+.is-indexing .upload-progress-fill { background: #0754f8; }
 .is-done .upload-progress-fill { background: #18a67a; }
 .is-done .upload-progress-value { color: #18a67a; }
 .is-error .upload-progress-fill { background: #d94b4b; }
@@ -116,7 +116,7 @@
 .source-modal .is-error .upload-progress-body .upload-progress-error { color: #ff9999; }
 .source-modal-card:disabled { opacity: .6; cursor: wait; }
 @keyframes document-indexing { from { transform: translateX(-110%); } to { transform: translateX(360%); } }
-@media (prefers-reduced-motion: reduce) { .upload-progress-fill { transition: none; } .is-indexing .upload-progress-fill { animation: none; width: 100% !important; opacity: .5; } }
+@media (prefers-reduced-motion: reduce) { .upload-progress-fill { transition: none; } }
 @media (max-width: 600px) { .upload-progress-card { padding: 12px; gap: 8px; } .upload-progress-icon { width: 30px; height: 30px; } .upload-progress-icon svg { width: 20px; height: 20px; } .upload-progress-bottom { gap: 8px; } }
 
 .url-row {

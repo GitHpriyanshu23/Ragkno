@@ -63,3 +63,5 @@ notebook/.ipynb_checkpoints/
 notebook/
 /app.py
 /main.py
+
+ingestion_jobs/
