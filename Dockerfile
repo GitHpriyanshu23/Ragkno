@@ -15,7 +15,8 @@ RUN pip install --no-cache-dir uv==0.11.14 \
 WORKDIR /app
 
 COPY --chown=ragkno:ragkno pyproject.toml uv.lock README.md ./
-RUN uv sync --frozen --no-dev --no-install-project
+RUN uv sync --frozen --no-dev --no-install-project --no-cache \
+    && .venv/bin/python -c "import torch; assert torch.version.cuda is None, 'CPU-only PyTorch is required'"
 
 COPY --chown=ragkno:ragkno backend ./backend
 COPY --chown=ragkno:ragkno src ./src

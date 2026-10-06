@@ -25,3 +25,18 @@ parent/child chunks without sentence-level model calls. Set
 `RAG_SEMANTIC_CHUNKING=true` to opt into the former semantic splitting behavior.
 `RAG_EMBEDDING_BATCH_SIZE` defaults to 32. Existing indexed documents are unchanged;
 new/reindexed documents use the configured chunking mode.
+
+### If a build runs out of disk space
+
+Linux now uses the CPU-only PyTorch wheel from the explicit PyTorch CPU index.
+The lockfile excludes CUDA/NVIDIA dependencies, and Docker installs dependencies
+without retaining the uv download cache. A build assertion checks that PyTorch
+has no CUDA runtime. This deployment is intended for CPU inference.
+
+On the server, inspect free space with `df -h /` and Docker usage with
+`sudo docker system df`. Remove unused build cache with
+`sudo docker builder prune` (review its confirmation prompt), then rebuild after
+pulling the CPU-only dependency commit. This removes build cache, not application
+volumes. Do not use volume pruning or `docker compose down -v`: indexed documents
+and pending jobs are stored in the backend volume. If space is still insufficient,
+expand the EC2 EBS volume and filesystem before rebuilding.
