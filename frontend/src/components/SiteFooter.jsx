@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
 import brandLogoDark from '../assets/figma-logo-mark-dark.svg'
+import AskAI from './AskAI.jsx'
 
 export default function SiteFooter() {
   return (
@@ -11,6 +12,7 @@ export default function SiteFooter() {
             <span>RAGKNO</span>
           </Link>
           <p className="footer-copyright">© RagKno 2026. All rights reserved.</p>
+          <AskAI />
         </div>
 
         <div className="footer-links">
