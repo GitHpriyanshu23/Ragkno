@@ -1,39 +1,28 @@
 // @vitest-environment jsdom
 import React from 'react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { afterEach, describe, expect, it } from 'vitest'
+import { cleanup, render, screen } from '@testing-library/react'
 import AskAI, { RAGKNO_EXPLAIN_PROMPT } from '../../../frontend/src/components/AskAI.jsx'
 
-afterEach(() => { cleanup(); vi.restoreAllMocks() })
+afterEach(cleanup)
 
 describe('Ask AI footer links', () => {
-  it('encodes the complete prompt for prefill links and uses a copy fallback for Gemini', () => {
+  it('opens four providers with the complete encoded prompt', () => {
     render(<AskAI />)
-    for (const name of ['ChatGPT', 'Claude', 'Grok']) {
-      const link = screen.getByRole('link', { name: `Ask ${name}` })
-      expect(new URL(link.href).searchParams.get('q')).toBe(RAGKNO_EXPLAIN_PROMPT)
+    const hosts = ['chatgpt.com', 'claude.ai', 'grok.com', 'www.perplexity.ai']
+    for (const [index, name] of ['ChatGPT', 'Claude', 'Grok', 'Perplexity'].entries()) {
+      const link = screen.getByRole('link', { name: `Ask ${name} about Ragkno` })
+      const url = new URL(link.href)
+      expect(url.hostname).toBe(hosts[index])
+      expect(url.searchParams.get('q')).toBe(RAGKNO_EXPLAIN_PROMPT)
       expect(link.target).toBe('_blank')
       expect(link.rel).toContain('noopener')
+      expect(link.textContent).toBe('Ask')
+      expect(link.querySelector('img')).toBeTruthy()
     }
-    expect(screen.getByRole('link', { name: 'Ask Gemini' }).href).toBe('https://gemini.google.com/app')
-  })
-
-  it('copies the prompt for a visitor to paste into Gemini', async () => {
-    const writeText = vi.fn().mockResolvedValue(undefined)
-    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } })
-    render(<AskAI />)
-    // Prevent jsdom navigation while preserving the actual browser link behavior.
-    const link = screen.getByRole('link', { name: 'Ask Gemini' })
-    link.addEventListener('click', (event) => event.preventDefault())
-    fireEvent.click(link)
-    await waitFor(() => expect(writeText).toHaveBeenCalledWith(RAGKNO_EXPLAIN_PROMPT))
-    expect(screen.getByRole('status').textContent).toContain('Paste it in Gemini')
-  })
-
-  it('provides selectable text when clipboard access is denied', async () => {
-    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: vi.fn().mockRejectedValue(new Error('denied')) } })
-    render(<AskAI />)
-    fireEvent.click(screen.getByRole('button', { name: 'Copy prompt' }))
-    await waitFor(() => expect(screen.getByRole('textbox', { name: 'RagKno explanation prompt' }).value).toBe(RAGKNO_EXPLAIN_PROMPT))
+    expect(screen.queryByRole('link', { name: /Gemini/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Copy prompt' })).toBeNull()
+    expect(screen.queryByRole('status')).toBeNull()
+    expect(screen.getByText('Ask AI about Ragkno')).toBeTruthy()
   })
 })

@@ -1,6 +1,7 @@
-import { useState } from 'react'
-import { HugeiconsIcon } from '@hugeicons/react'
-import { ChatGptIcon, ClaudeIcon, GrokIcon, GoogleGeminiIcon } from '@hugeicons/core-free-icons'
+import chatgptLogo from '../assets/ai-logos/chatgpt.svg'
+import claudeLogo from '../assets/ai-logos/claude.svg'
+import grokLogo from '../assets/ai-logos/grok.svg'
+import perplexityLogo from '../assets/ai-logos/perplexity.svg'
 
 export const RAGKNO_EXPLAIN_PROMPT = `What is RagKno (https://ragkno.com), what does it do, and how can I use it?
 Explain in plain language for someone who has never used it. Start with a three-line summary, then give a short getting-started guide and two practical examples (such as finding information in study notes or comparing details in reports).
@@ -15,45 +16,28 @@ Check current information and prefer citing these official sources:
 If you cannot browse, say so and use the description above. Keep the answer short and practical.`
 
 const providers = [
-  { name: 'ChatGPT', icon: ChatGptIcon, color: '#10a37f', url: 'https://chatgpt.com/', prefill: true },
-  { name: 'Claude', icon: ClaudeIcon, color: '#c76b4c', url: 'https://claude.ai/new', prefill: true },
-  { name: 'Grok', icon: GrokIcon, color: '#171717', url: 'https://grok.com/', prefill: true },
-  { name: 'Gemini', icon: GoogleGeminiIcon, color: '#4285f4', url: 'https://gemini.google.com/app', prefill: false },
+  { name: 'ChatGPT', logo: chatgptLogo, url: 'https://chatgpt.com/' },
+  { name: 'Claude', logo: claudeLogo, url: 'https://claude.ai/new' },
+  { name: 'Grok', logo: grokLogo, url: 'https://grok.com/' },
+  { name: 'Perplexity', logo: perplexityLogo, url: 'https://www.perplexity.ai/search' },
 ]
 
 export default function AskAI() {
-  const [status, setStatus] = useState('')
-  const [showPrompt, setShowPrompt] = useState(false)
-
-  async function copyPrompt(name) {
-    try {
-      await navigator.clipboard.writeText(RAGKNO_EXPLAIN_PROMPT)
-      setStatus(name ? `Prompt copied. Paste it in ${name} if it isn’t filled in.` : 'Prompt copied.')
-    } catch {
-      setShowPrompt(true)
-      setStatus('Select and copy the prompt below, then paste it into your AI chat.')
-    }
-  }
-
   return (
-    <section className="footer-ask-ai" aria-label="Ask AI about RagKno">
-      <p className="footer-ask-ai-title">Curious about RagKno? Ask AI.</p>
+    <section className="footer-ask-ai" aria-label="Ask AI about Ragkno">
+      <p className="footer-ask-ai-title">Ask AI about Ragkno</p>
       <div className="footer-ai-buttons">
-        {providers.map(({ name, icon, color, url, prefill }) => (
+        {providers.map(({ name, logo, url }) => (
           <a key={name} className="footer-ai-button"
-            href={prefill ? `${url}?q=${encodeURIComponent(RAGKNO_EXPLAIN_PROMPT)}` : url}
+            href={`${url}?q=${encodeURIComponent(RAGKNO_EXPLAIN_PROMPT)}`}
             target="_blank" rel="noopener noreferrer"
-            title={prefill ? `Ask ${name} about RagKno (opens a new tab)` : 'Copy the prompt and open Gemini in a new tab'}
-            onClick={() => { void copyPrompt(name) }}>
-            <HugeiconsIcon icon={icon} size={19} color={color} aria-hidden="true" />
-            <span>Ask {name}</span>
+            aria-label={`Ask ${name} about Ragkno`}
+            title={`Ask ${name} about Ragkno (opens a new tab)`}>
+            <span>Ask</span>
+            <img src={logo} alt="" width="17" height="17" />
           </a>
         ))}
       </div>
-      <p className="footer-ai-help">Gemini: paste the copied prompt. Other chats may need a paste after sign-in.</p>
-      <button type="button" className="footer-ai-copy" onClick={() => { void copyPrompt() }}>Copy prompt</button>
-      <p className="footer-ai-status" role="status">{status}</p>
-      {showPrompt && <textarea className="footer-ai-prompt" aria-label="RagKno explanation prompt" readOnly value={RAGKNO_EXPLAIN_PROMPT} onFocus={(event) => event.target.select()} />}
     </section>
   )
 }
