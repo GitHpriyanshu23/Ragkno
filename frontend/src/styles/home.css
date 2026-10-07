@@ -2096,6 +2096,18 @@ section {
 .footer-ai-button img { display: block; flex-shrink: 0; width: 17px; height: 17px; object-fit: contain; }
 .footer-ai-button:focus-visible { outline: 2px solid #4285f4; outline-offset: 3px; }
 
+@media (min-width: 901px) {
+  .site-footer .footer-ask-ai {
+    width: 100%;
+    max-width: none;
+    margin: 4px 0 0;
+    padding: 0;
+  }
+
+  .site-footer .footer-ai-buttons { flex-wrap: nowrap; }
+  .site-footer .footer-ai-button { padding-inline: 7px; }
+}
+
 .footer-links {
   display: grid;
   grid-template-columns: repeat(4, minmax(120px, 1fr));
