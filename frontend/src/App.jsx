@@ -67,6 +67,7 @@ import {
   API_BASE,
 } from './api.js'
 import FeedbackModal from './components/FeedbackModal.jsx'
+import useFeedbackInvitation from './lib/useFeedbackInvitation.js'
 import UploadProgress from './components/UploadProgress.jsx'
 import SettingsModal from './components/SettingsModal.jsx'
 import DotGrid from './components/DotGrid.jsx'
@@ -1142,6 +1143,11 @@ export function ChatPage({ user, onUserChange, onToast }) {
   const [settingsModalOpen, setSettingsModalOpen] = useState(false)
   const [settingsModalTab, setSettingsModalTab] = useState('general')
   const [feedbackModalOpen, setFeedbackModalOpen] = useState(false)
+  const recordSuccessfulAnswer = useFeedbackInvitation(user?.id || user?.email, {
+    open: feedbackModalOpen,
+    blocked: loading || settingsModalOpen,
+    onOpen: () => setFeedbackModalOpen(true),
+  })
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [compactSidebarOpen, setCompactSidebarOpen] = useState(false)
 
@@ -1789,6 +1795,7 @@ export function ChatPage({ user, onUserChange, onToast }) {
         activity: null,
         streaming: false,
       }), targetThreadId)
+      recordSuccessfulAnswer()
     } catch (streamError) {
       const aborted = streamError?.name === 'AbortError'
       const timeoutMessage = 'The model took too long to respond. Please try again.'
