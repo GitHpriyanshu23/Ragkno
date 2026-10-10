@@ -829,3 +829,67 @@ def test_guidance_response_is_saved_and_can_be_rated(api):
     answer = next(m for m in messages if m['id'] == mid)
     assert answer['action']['to'] == '/chat/data'
     assert client.put(f'/threads/{tid}/messages/{mid}/rating', json={'rating': 'like'}, **auth('alice')).status_code == 200
+
+
+@pytest.mark.parametrize("background", [False, True])
+def test_upload_status_uses_source_identity_not_pdf_title(api, monkeypatch, tmp_path, background):
+    import numpy as np
+    from src.chroma_store import ChromaVectorStore
+
+    main, client, auth = api
+    monkeypatch.setenv("RAG_SEMANTIC_CHUNKING", "false")
+    store = ChromaVectorStore(persist_dir=str(tmp_path / "title-regression"), load_model=False)
+
+    class Embeddings:
+        def encode(self, texts, **kwargs):
+            return np.ones((len(texts), 4))
+
+    store.model = Embeddings()
+    monkeypatch.setattr(main, "_get_store", lambda: store)
+    # Both PDFs have the same embedded title, but distinct filenames and IDs.
+    monkeypatch.setattr(main, "load_uploaded_file", lambda name, content: [
+        Document(page_content="Preparation guide: review the project goals and explain your methodology.",
+                 metadata={"source": name, "source_type": "upload", "title": "Viva Preparation Guide", "page": 0})
+    ])
+    endpoint = "/ingest/jobs/files" if background else "/ingest/files"
+    try:
+        response = client.post(endpoint, files=[
+            ("files", ("Viva_Preparation_Guide.pdf", b"pdf-one", "application/pdf")),
+            ("files", ("Second_Guide.pdf", b"pdf-two", "application/pdf")),
+        ], **auth("alice"))
+        assert response.status_code == (202 if background else 200)
+        result = response.json()
+        if background:
+            deadline = time.monotonic() + 10
+            while time.monotonic() < deadline:
+                job = client.get(f"/ingest/jobs/{result['job_id']}", **auth("alice")).json()
+                if job["status"] in {"completed", "failed"}:
+                    break
+                time.sleep(.05)
+            assert job["status"] == "completed"
+            result = job["result"]
+        assert result["ok"] is True
+        assert result["source_count"] == 2
+        assert all(source["status"] == "indexed" and source["chunk_count"] > 0 and source["error"] is None
+                   for source in result["sources"])
+        assert len({source["source_id"] for source in result["sources"]}) == 2
+        indexed = client.get("/ingest/sources", **auth("alice")).json()
+        assert len(indexed["sources"]) == 2
+    finally:
+        if background:
+            main._ingestion_jobs.stop()
+
+
+def test_upload_without_chunks_is_not_reported_as_success(api, monkeypatch):
+    main, client, auth = api
+    monkeypatch.setattr(main, "load_uploaded_file", lambda name, content: [
+        Document(page_content="Text", metadata={"source": name, "source_type": "upload"})
+    ])
+    monkeypatch.setattr(main, "_get_store", lambda: type("EmptyStore", (), {"add_documents": lambda *args, **kwargs: []})())
+    response = client.post("/ingest/files", files={"files": ("empty.pdf", b"pdf", "application/pdf")}, **auth("alice"))
+    assert response.status_code == 200
+    result = response.json()
+    assert result["ok"] is False
+    assert result["source_count"] == 0
+    assert result["sources"][0]["status"] == "failed"
+    assert main._db.get_user_sources("alice") == []

@@ -893,10 +893,15 @@ def _index_uploaded_files(user, files, progress=None):
             _db.record_user_source(user_id, source_key=item["source_key"], source_name=item["source_name"], source_type="upload", chunk_count=item["chunk_count"])
         _invalidate_retrieval_cache()
 
-        indexed_by_name = {str(item.get("source_name")): item for item in indexed}
+        # PDF metadata titles are labels, not identities: they may differ from
+        # the uploaded filename or be shared by several unrelated documents.
+        indexed_by_key = {
+            str(item["source_key"]): item for item in indexed
+            if item.get("source_key") and int(item.get("chunk_count", 0) or 0) > 0
+        }
         results = []
         for result in preliminary:
-            item = indexed_by_name.get(result["display_name"])
+            item = indexed_by_key.get(result["display_name"])
             if item and result["status"] == "ready":
                 results.append(_source_result(item))
             else:
@@ -905,11 +910,12 @@ def _index_uploaded_files(user, files, progress=None):
                     result["error"] = "No chunks were produced"
                 results.append(result)
 
+        successful = [result for result in results if result["status"] == "indexed"]
         return {
-            "ok": True,
-            "message": f"Indexed {len(indexed)} of {len(files)} uploaded file(s).",
-            "indexed_chunks": sum(item["chunk_count"] for item in indexed),
-            "source_count": len(indexed),
+            "ok": bool(successful),
+            "message": f"Indexed {len(successful)} of {len(files)} uploaded file(s).",
+            "indexed_chunks": sum(item["chunk_count"] for item in successful),
+            "source_count": len(successful),
             "sources": results,
         }
     except ValueError as e:
