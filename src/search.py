@@ -941,8 +941,61 @@ class RAGSearch:
         parent_expanded = self._expand_to_parent_context(ranked, top_k=top_k)
         return parent_expanded, retrieval_query
 
+    def _summary_request_context(self, query: str, user_id: str, source_ids: list[str] | None):
+        if not re.search(r"\b(summari[sz]e|summary|overview)\b", query, re.I):
+            return None
+        if not user_id:
+            raise ValueError("Authenticated user_id is required for retrieval")
+        available = self.vectorstore.get_user_sources(user_id=user_id)
+        candidates = [item for item in available if not source_ids or item.get('source_id') in source_ids]
+        normalize = lambda value: re.sub(r'[^\w]+', ' ', str(value).casefold()).strip()
+        normalized_query = normalize(query)
+        named = []
+        for item in candidates:
+            labels = [item.get('source'), item.get('title'), item.get('source_key')]
+            if any(label and len(normalize(label).split()) >= 1 and
+                   f" {normalize(re.sub(r'\.(pdf|docx|txt)$', '', str(label), flags=re.I))} " in f" {normalized_query} "
+                   for label in labels):
+                named.append(item)
+        generic_words = {'summarize', 'summarise', 'summary', 'overview', 'the', 'a', 'an', 'my', 'this', 'that', 'it',
+                         'pdf', 'file', 'document', 'please', 'give', 'me', 'of', 'provide', 'can', 'you', 'could',
+                         'short', 'brief', 'quick', 'detailed', 'again', 'once', 'more', 'in', 'detail'}
+        generic = set(normalized_query.split()).issubset(generic_words)
+        if not generic and not named:
+            # Topic-specific requests (e.g. "summarize revenue growth") still
+            # use relevance search rather than sampling unrelated sections.
+            return None
+        chosen = named if named else candidates
+        if len(chosen) != 1:
+            if not chosen:
+                return [], "Choose an indexed document from Sources or add one in Data Center, then I can summarize it."
+            names = [str(item.get('title') or item.get('source') or 'Document').replace('\n', ' ') for item in chosen]
+            return [], "Which document would you like me to summarize?\n\n" + '\n'.join(f"- {name}" for name in names) + "\n\nTell me its name, or select just that document from Sources."
+        rows = self.vectorstore.get_user_metadata(user_id, [chosen[0]['source_id']])
+        rows = [row for row in rows if row.get('user_id') == user_id and row.get('source_id') == chosen[0]['source_id'] and str(row.get('text') or '').strip()]
+        def order(row):
+            try:
+                page = float(row.get('page', 0) or 0)
+            except (TypeError, ValueError):
+                page = 0
+            return (page, str(row.get('chunk_id', '')))
+        rows.sort(key=order)
+        # Broad requests need representative passages across the document,
+        # not passages semantically similar to the word "summarize".
+        limit = min(18, len(rows))
+        indexes = [round(index * (len(rows) - 1) / max(1, limit - 1)) for index in range(limit)]
+        results = [{'metadata': {**rows[index], 'text': str(rows[index]['text'])[:1400]}} for index in indexes]
+        return results, None
+
     def answer_with_sources(self, query: str, top_k: int = 5, memory_context: str | None = None, user_id: str | None = None, model: str | None = None, use_reranker: bool = True, source_ids: list[str] | None = None, language: str | None = None, **kwargs) -> dict:
-        ranked_results, _ = self._retrieve_for_answer(query, top_k, memory_context, user_id=user_id, use_reranker=use_reranker, source_ids=source_ids)
+        summary = self._summary_request_context(query, user_id, source_ids)
+        if summary is not None and summary[1]:
+            return {"answer": summary[1], "sources": []}
+        if summary is not None:
+            ranked_results = summary[0]
+            query = f"{query}\nSummarize the supplied document excerpts with citations. This is a valid document-summary request. Describe the main themes visible in the excerpts; for long documents make clear this is an overview based on sampled passages, not an exhaustive review."
+        else:
+            ranked_results, _ = self._retrieve_for_answer(query, top_k, memory_context, user_id=user_id, use_reranker=use_reranker, source_ids=source_ids)
         ranked_results = [row for row in ranked_results if (row.get("metadata") or {}).get("user_id") == user_id]
         sources = self._build_source_payload(ranked_results)
         if not sources:
@@ -957,7 +1010,14 @@ class RAGSearch:
         return {"answer": answer, "sources": sources}
 
     def stream_answer_with_sources(self, query: str, top_k: int = 5, memory_context: str | None = None, user_id: str | None = None, model: str | None = None, use_reranker: bool = True, source_ids: list[str] | None = None, language: str | None = None, **kwargs) -> tuple[list[dict], Iterator[str]]:
-        ranked_results, _ = self._retrieve_for_answer(query, top_k, memory_context, user_id=user_id, use_reranker=use_reranker, source_ids=source_ids)
+        summary = self._summary_request_context(query, user_id, source_ids)
+        if summary is not None and summary[1]:
+            return [], iter([summary[1]])
+        if summary is not None:
+            ranked_results = summary[0]
+            query = f"{query}\nSummarize the supplied document excerpts with citations. This is a valid document-summary request. Describe the main themes visible in the excerpts; for long documents make clear this is an overview based on sampled passages, not an exhaustive review."
+        else:
+            ranked_results, _ = self._retrieve_for_answer(query, top_k, memory_context, user_id=user_id, use_reranker=use_reranker, source_ids=source_ids)
         ranked_results = [row for row in ranked_results if (row.get("metadata") or {}).get("user_id") == user_id]
         sources = self._build_source_payload(ranked_results)
         if not sources:
