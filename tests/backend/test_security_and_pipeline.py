@@ -893,3 +893,25 @@ def test_upload_without_chunks_is_not_reported_as_success(api, monkeypatch):
     assert result["source_count"] == 0
     assert result["sources"][0]["status"] == "failed"
     assert main._db.get_user_sources("alice") == []
+
+
+@pytest.mark.parametrize('stream', [False, True])
+def test_document_orientation_is_only_for_initial_question(api, monkeypatch, stream):
+    main, client, auth = api
+    tid = main._db.create_thread('alice')['id']
+    main._db.append_message(tid, 'alice', 'user', 'hello')
+    main._db.append_message(tid, 'alice', 'assistant', 'Hello!')
+    flags = []
+    class Rag:
+        def answer_with_sources(self, **kwargs):
+            flags.append(kwargs['initial_question'])
+            return {'answer': 'Document guidance', 'sources': []}
+        def stream_answer_with_sources(self, **kwargs):
+            flags.append(kwargs['initial_question'])
+            return [], iter(['Document guidance'])
+    monkeypatch.setattr(main, '_get_rag', lambda: Rag())
+    endpoint = '/query/stream' if stream else '/query'
+    for index in range(2):
+        response = client.post(endpoint, json={'query': 'An unrelated question', 'thread_id': tid, 'request_id': f'scope-request-{index}'}, **auth('alice'))
+        assert response.status_code == 200
+    assert flags == [True, False]

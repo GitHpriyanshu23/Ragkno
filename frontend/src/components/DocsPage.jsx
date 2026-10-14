@@ -325,7 +325,7 @@ export default function DocsPage() {
           <section id="troubleshooting" className="docs-section">
             <h2>Troubleshooting</h2>
             <div className="docs-troubleshooting">
-              <details><summary>The response says no relevant documents were found</summary><p>Confirm that a source is indexed and selected, then ask a question that uses terms present in the source. Re-index documents after changing chunking or embedding settings.</p></details>
+              <details><summary>The response says there isn’t enough information to answer</summary><p>This does not mean your documents failed to index. The selected documents may not contain information that answers this question. Ask about a topic or section they contain, choose other indexed sources from Sources, or add a document that covers your question in Data Center.</p></details>
               <details><summary>The model response is interrupted</summary><p>Check the AgentRouter key, enabled model names, provider capacity, and request timeout. The backend health endpoint confirms configuration, while server logs contain the provider error.</p></details>
               <details><summary>Google Drive does not connect</summary><p>Verify both OAuth redirect URIs, the consent screen test users, and the Drive read-only scope in Google Cloud Console.</p></details>
               <details><summary>The backend runs out of memory</summary><p>Use CPU devices for production embedding and reranking, keep one worker initially, and provide enough memory for both models and document processing.</p></details>

@@ -1788,7 +1788,7 @@ export function ChatPage({ user, onUserChange, onToast }) {
 
       updateMessageById(assistantMessageId, (message) => ({
         ...message,
-        text: message.text || streamDonePayload?.answer || 'No relevant documents found.',
+        text: message.text || streamDonePayload?.answer || 'I couldn’t finish this answer. Please try asking again or rephrasing your question.',
         sources: Array.isArray(streamDonePayload?.sources) && streamDonePayload.sources.length > 0
           ? streamDonePayload.sources.map(repairSourceMetadata)
           : message.sources,

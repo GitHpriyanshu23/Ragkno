@@ -1152,6 +1152,13 @@ def _local_greeting_answer(user: dict) -> str:
     )
 
 
+def _is_initial_document_question(thread_id: str, user_id: str) -> bool:
+    return not any(
+        message.get("role") == "user" and not _is_simple_greeting(message.get("text", ""))
+        for message in _db.get_thread_messages(thread_id, user_id)
+    )
+
+
 @app.post("/memory/reset", summary="Reset chat memory for a session")
 def reset_memory(req: SessionRequest, request: Request):
     if not req.session_id.strip():
@@ -1195,6 +1202,7 @@ def handle_query(req: QueryRequest, request: Request):
         rag = _get_rag()
         memory_context = _memory_store.build_memory_context(session_id=thread_id, recent_limit=8, user_id=user_id)
         response_payload = rag.answer_with_sources(
+            initial_question=_is_initial_document_question(thread_id, user_id),
             query=req.query.strip(),
             top_k=req.top_k,
             memory_context=memory_context,
@@ -1275,6 +1283,7 @@ def handle_query_stream(req: QueryRequest, request: Request, background_tasks: B
             rag = _get_rag()
             memory_context = _memory_store.build_memory_context(session_id=thread_id, recent_limit=8, user_id=user_id)
             sources, token_iter = rag.stream_answer_with_sources(
+                initial_question=_is_initial_document_question(thread_id, user_id),
                 query=req.query.strip(),
                 top_k=req.top_k,
                 memory_context=memory_context,
@@ -1302,7 +1311,7 @@ def handle_query_stream(req: QueryRequest, request: Request, background_tasks: B
                 answer_parts.append(text)
                 yield _sse_event("token", {"request_id": req.request_id, "token": text})
 
-            answer = "".join(answer_parts).strip() or "No relevant documents found."
+            answer = "".join(answer_parts).strip() or "I couldn’t finish this answer. Please try asking again or rephrasing your question."
             _db.complete_query_exchange(req.request_id, thread_id, user_id, req.query.strip(), answer, prepared_sources)
             try:
                 _memory_store.append_turn(thread_id, "user", req.query.strip(), user_id=user_id)
